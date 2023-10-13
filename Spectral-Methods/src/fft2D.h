@@ -26,7 +26,7 @@ public:
     fft2D(const int &_N);
 
     // Apply fft2D to a. v=1 for fft and v=-1 for ifft.
-    Array apply(const Array &a, const int &v) const;
+    void apply(Array &a, const int &v) const;
 };
 
 #endif

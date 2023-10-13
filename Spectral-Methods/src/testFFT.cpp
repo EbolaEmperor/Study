@@ -23,8 +23,8 @@ void testInv(){
         for(int j = 0; j < N; j++){
             a[i*N+j] = f[i][j];
         }
-    a = fft.apply(a, 1);
-    a = fft.apply(a, -1);
+    fft.apply(a, 1);
+    fft.apply(a, -1);
     double maxerr = 0;
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++)
@@ -50,11 +50,11 @@ void fftConv(){
             a[i*2*N+j] = f[i][j];
             b[i*2*N+j] = g[i][j];
         }
-    a = fft.apply(a, 1);
-    b = fft.apply(b, 1);
+    fft.apply(a, 1);
+    fft.apply(b, 1);
     for(int i = 0; i < N*N*4; i++)
         a[i] *= b[i];
-    a = fft.apply(a, -1);
+    fft.apply(a, -1);
     double maxerr = 0;
     for(int i = 0; i < N*2; i++){
         for(int j = 0; j < N*2; j++){

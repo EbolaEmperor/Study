@@ -10,7 +10,7 @@ Diffusion2Dsolver::Diffusion2Dsolver(const Function2D &g, const int &N): initial
         for(int j = 0; j < N; j++){
             initFcoef[i*N+j] = g(dH/2+i*dH, dH/2+j*dH);
         }
-    initFcoef = fft.apply(initFcoef, 1);
+    fft.apply(initFcoef, 1);
 }
 
 std::vector<double> Diffusion2Dsolver::operator () (const double &t) const{
@@ -23,7 +23,7 @@ std::vector<double> Diffusion2Dsolver::operator () (const double &t) const{
         }
     }
     std::vector<double> res(N*N);
-    coef = fft.apply(coef, -1);
+    fft.apply(coef, -1);
     for(int i = 0; i < N*N; i++)
         res[i] = coef[i].real();
     return res;

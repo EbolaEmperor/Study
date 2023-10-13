@@ -35,8 +35,7 @@ fft2D::fft2D(const int &_N){
 	}
 }
 
-Array fft2D::apply(const Array &in_a, const int &v) const{
-    Array a = in_a;
+void fft2D::apply(Array &a, const int &v) const{
 	for(int i = 0; i < N; i++)
         for(int j = 0; j < N; j++)
             if(i<r[i] || i==r[i] && j<r[j]) swap(a[i*N+j], a[r[i]*N+r[j]]);
@@ -64,5 +63,4 @@ Array fft2D::apply(const Array &in_a, const int &v) const{
             }
 	}
     if(v==-1) for(auto& z : a) z/=(N*N);
-    return a;
 }
