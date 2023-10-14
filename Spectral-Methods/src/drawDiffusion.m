@@ -3,6 +3,6 @@ N = sqrt(size(A,2));
 l = 0.5/N:1/N:1;
 [x,y] = meshgrid(l, l);
 
-pcolor(x, y, reshape(A(4,:),N,N));
+pcolor(x, y, reshape(A(3,:),N,N));
 shading flat
 colorbar

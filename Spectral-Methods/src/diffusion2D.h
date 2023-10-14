@@ -1,26 +1,32 @@
 #ifndef _DIFFUSION_2D_
 #define _DIFFUSION_2D_
 
+#include "matrix.h"
 #include "fft2D.h"
-
-class Function2D{
-public:
-    virtual double operator () (const double &x, const double &y) const = 0;
-};
+#include "function2D.h"
 
 class Diffusion2Dsolver{
 private:
     int N;
-    const Function2D &initial;
+    double nu;
     fft2D fft;
     Array initFcoef;
 
 public:
-    // Initialize fft2D and do the fft to the initial condition.
-    Diffusion2Dsolver(const Function2D &g, const int &N);
+    // Initialize fft2D.
+    Diffusion2Dsolver(const int &N);
+
+    // Set diffusion coefficient, default is 1.0.
+    void setDiffusionCoef(const double &nu);
+
+    // Initialize with a function.
+    void init(const Function2D &initial);
+
+    // Initialize with discrete values.
+    void init(const ColVector &initial);
 
     // Return the solution at time t.
-    std::vector<double> operator () (const double &t) const;
+    ColVector operator () (const double &t) const;
 
     // Output the solution at time t.
     void output(const std::string &fname, const double &t, const double &h) const;

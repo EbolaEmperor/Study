@@ -2,8 +2,6 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-const int N = 256;
-
 class G : public Function2D{
 public:
     virtual double operator () (const double &x, const double &y) const{
@@ -13,8 +11,9 @@ public:
     }
 } g;
 
-int main(){
-    Diffusion2Dsolver solver(g, N);
+int main(int argc, char * argv[]){
+    Diffusion2Dsolver solver(stoi(argv[1]));
+    solver.init(g);
     solver.denseDiscreteOutput("result-dense.txt", 0.01, 0.3);
     return 0;
 }
