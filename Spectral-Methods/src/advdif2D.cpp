@@ -57,31 +57,30 @@ double AdvectionDiffusionSolver::facephi_up(const ColVector &phi, const int &i, 
     return 7.0/12.0 * (solValue(phi,i,j) + solValue(phi,i,j+1)) - 1.0/12.0 * (solValue(phi,i,j-1) + solValue(phi,i,j+2));
 }
 
-double AdvectionDiffusionSolver::Gdp_phi_right(const ColVector &phi, const int &i, const int &j){
-    return 0.5/dH * (facephi_right(phi,i,j+1) - facephi_right(phi,i,j-1));
+double AdvectionDiffusionSolver::Gdp_phi_right(const ColVector &phi_face0, const int &i, const int &j){
+    return 0.5/dH * (solValue(phi_face0,i,j+1) - solValue(phi_face0,i,j-1));
 }
 
-double AdvectionDiffusionSolver::Gdp_phi_up(const ColVector &phi, const int &i, const int &j){
-    return 0.5/dH * (facephi_up(phi,i+1,j) - facephi_up(phi,i-1,j));
-}
-
-double AdvectionDiffusionSolver::Gdp_u_right(Function2D *u, const int &i, const int &j){
-    return 0.5/dH * (u->intFixX((i+1)*dH,(j+1)*dH,(j+2)*dH) - u->intFixX((i+1)*dH,(j-1)*dH,j*dH)) /dH;
-}
-
-double AdvectionDiffusionSolver::Gdp_u_up(Function2D *u, const int &i, const int &j){
-    return 0.5/dH * (u->intFixY((j+1)*dH,(i+1)*dH,(i+2)*dH) - u->intFixY((j+1)*dH,(i-1)*dH,i*dH)) /dH;
+double AdvectionDiffusionSolver::Gdp_phi_up(const ColVector &phi_face1, const int &i, const int &j){
+    return 0.5/dH * (solValue(phi_face1,i+1,j) - solValue(phi_face1,i-1,j));
 }
 
 double AdvectionDiffusionSolver::F_right(const ColVector &phi, Function2D *u, const int &i, const int &j){
-    return facephi_right(phi,i,j) * u->intFixX((i+1)*dH,j*dH,(j+1)*dH)/dH + dH*dH/12.0 * Gdp_phi_right(phi,i,j) * Gdp_u_right(u,i,j);
+    return solValue(phi_face0,i,j) * solValue(u_face0,i,j) + dH*dH/12.0 * Gdp_phi_right(phi_face0,i,j) * Gdp_phi_right(u_face0,i,j);
 }
 
 double AdvectionDiffusionSolver::F_up(const ColVector &phi, Function2D *u, const int &i, const int &j){
-    return facephi_up(phi,i,j) * u->intFixY((j+1)*dH,i*dH,(i+1)*dH)/dH + dH*dH/12.0 * Gdp_phi_up(phi,i,j) * Gdp_u_up(u,i,j);
+    return solValue(phi_face1,i,j) * solValue(u_face1,i,j) + dH*dH/12.0 * Gdp_phi_up(phi_face1,i,j) * Gdp_phi_up(u_face1,i,j);
 }
 
 ColVector AdvectionDiffusionSolver::Ladv(const ColVector &phi){
+    for(int i = 0; i < M; i++)
+        for(int j = 0; j < M; j++){
+            phi_face0(idx(i,j)) = facephi_right(phi, i, j);
+            phi_face1(idx(i,j)) = facephi_up(phi, i, j);
+            u_face0(idx(i,j)) = ux->intFixX((i+1)*dH, j*dH, (j+1)*dH)/dH;
+            u_face1(idx(i,j)) = uy->intFixY((j+1)*dH, i*dH, (i+1)*dH)/dH;
+        }
     ColVector res(M*M);
     if(uIsConst){
         for(int i = 0; i < M; i++)
@@ -133,6 +132,11 @@ void AdvectionDiffusionSolver::solve(){
         for(int j = 0; j < M; j++){
             sol(idx(i,j)) = initial->accInt2D(i*dH, (i+1)*dH, j*dH, (j+1)*dH) * M * M;
         }
+    phi_face0 = ColVector(M*M);
+    phi_face1 = ColVector(M*M);
+    u_face0 = ColVector(M*M);
+    u_face1 = ColVector(M*M);
+
     int stcl = clock();
     for(double t = 0.0; t+1e-12 < tEnd; t += dT){
         // multi stage

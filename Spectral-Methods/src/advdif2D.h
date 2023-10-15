@@ -20,13 +20,13 @@ private:
     double constUx, constUy;
     ColVector sol;
     Diffusion2Dsolver difSolver;
+    ColVector phi_face0, phi_face1;
+    ColVector u_face0, u_face1;
 
     // Discrete operators
     ColVector Ladv(const ColVector &phi);
     double F_up(const ColVector &phi, Function2D *u, const int &i, const int &j);
     double F_right(const ColVector &phi, Function2D *u, const int &i, const int &j);
-    double Gdp_u_up(Function2D *u, const int &i, const int &j);
-    double Gdp_u_right(Function2D *u, const int &i, const int &j);
     double Gdp_phi_up(const ColVector &phi, const int &i, const int &j);
     double Gdp_phi_right(const ColVector &phi, const int &i, const int &j);
     double facephi_up(const ColVector &phi, const int &i, const int &j);
