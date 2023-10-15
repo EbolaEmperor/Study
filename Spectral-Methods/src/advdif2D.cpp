@@ -166,16 +166,25 @@ void AdvectionDiffusionSolver::solve(){
     u_face1 = ColVector(M*M);
     F_face0 = ColVector(M*M);
     F_face1 = ColVector(M*M);
-    const double w1 = 1.0 / (2.0-pow(2.0,1.0/3));
-    const double w2 = -pow(2.0,1.0/3) / (2.0-pow(2.0,1.0/3));
+    
+    // The coefficients for Forest-Ruth splitting.
+    // const double w1 = 1.0 / (2.0-pow(2.0,1.0/3));
+    // const double w2 = -pow(2.0,1.0/3) / (2.0-pow(2.0,1.0/3));
 
     int stcl = clock();
     for(double t = 0.0; t+1e-12 < tEnd; t += dT){
         std::cout << "Time: " << t << std::endl;
         // Forest-Ruth splitting.
-        StrangStep(w1*dT);
-        StrangStep(w2*dT);
-        StrangStep(w1*dT);
+        // StrangStep(w1*dT);
+        // StrangStep(w2*dT);
+        // StrangStep(w1*dT);
+
+        // Chin splitting.
+        AdvectionStep(dT/6);
+        DiffusionStep(dT/2);
+        AdvectionStep(dT*2/3);
+        DiffusionStep(dT/2);
+        AdvectionStep(dT/6);
     }
     std::cout << "Solved. in " << (double)(clock()-stcl)/CLOCKS_PER_SEC << "s." << std::endl;
 }
