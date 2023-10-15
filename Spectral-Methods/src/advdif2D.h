@@ -38,6 +38,7 @@ private:
     int idx(const idpair &x);
     double solValue(const ColVector &phi, const int &i, const int &j);
     void AdvectionStep(const double &t);
+    void DiffusionStep(const double &t);
     void StrangStep(const double &t);
 
 public:

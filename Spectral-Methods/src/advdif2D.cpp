@@ -140,11 +140,16 @@ void AdvectionDiffusionSolver::AdvectionStep(const double &t){
     sol = sol + t/6 * (RK_y1 + 2*RK_y2 + 2*RK_y3 + RK_y4);
 }
 
+void AdvectionDiffusionSolver::DiffusionStep(const double &t){
+    // Diffusion step based on spectral method.
+    difSolver.init(sol);
+    sol = difSolver(t);
+}
+
 void AdvectionDiffusionSolver::StrangStep(const double &t){
     // FV-SE alternating base on strang splitting.
     AdvectionStep(t/2);
-    difSolver.init(sol);
-    sol = difSolver(t);
+    DiffusionStep(t);
     AdvectionStep(t/2);
 }
 
