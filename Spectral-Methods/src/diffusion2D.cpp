@@ -23,6 +23,7 @@ void Diffusion2Dsolver::init(const ColVector &initial){
     initFcoef.resize(N*N);
     for(int i = 0; i < N*N; i++)
         initFcoef[i] = initial(i);
+    auto t = initFcoef;
     fft.apply(initFcoef, 1);
 }
 

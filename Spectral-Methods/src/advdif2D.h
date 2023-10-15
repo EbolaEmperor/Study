@@ -22,6 +22,7 @@ private:
     Diffusion2Dsolver difSolver;
     ColVector phi_face0, phi_face1;
     ColVector u_face0, u_face1;
+    ColVector F_face0, F_face1;
 
     // Discrete operators
     ColVector Ladv(const ColVector &phi);
@@ -36,6 +37,8 @@ private:
     int idx(const int &i, const int &j);
     int idx(const idpair &x);
     double solValue(const ColVector &phi, const int &i, const int &j);
+    void AdvectionStep(const double &t);
+    void StrangStep(const double &t);
 
 public:
     AdvectionDiffusionSolver(const int &M);

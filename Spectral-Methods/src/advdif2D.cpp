@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <queue>
 
 //------------------------------------------------------Settings----------------------------------------------------------------
 
@@ -91,7 +92,12 @@ ColVector AdvectionDiffusionSolver::Ladv(const ColVector &phi){
     } else {
         for(int i = 0; i < M; i++)
             for(int j = 0; j < M; j++){
-                res(idx(i,j)) = -1.0/dH * ( F_right(phi,ux,i,j) - F_right(phi,ux,i-1,j) + F_up(phi,uy,i,j) - F_up(phi,uy,i,j-1) );
+                F_face0(idx(i,j)) = F_right(phi,ux,i,j);
+                F_face1(idx(i,j)) = F_up(phi,ux,i,j);
+            }
+        for(int i = 0; i < M; i++)
+            for(int j = 0; j < M; j++){
+                res(idx(i,j)) = -1.0/dH * ( solValue(F_face0,i,j) - solValue(F_face0,i-1,j) + solValue(F_face1,i,j) - solValue(F_face1,i,j-1) );
             }
     }
     return res;
@@ -125,6 +131,23 @@ void AdvectionDiffusionSolver::output(const std::string &outname){
 
 //-----------------------------------------------------Solve Process----------------------------------------------------------
 
+void AdvectionDiffusionSolver::AdvectionStep(const double &t){
+    // Advection step based on classical RK.
+    ColVector RK_y1 = Ladv(sol);
+    ColVector RK_y2 = Ladv(sol + t/2*RK_y1);
+    ColVector RK_y3 = Ladv(sol + t/2*RK_y2);
+    ColVector RK_y4 = Ladv(sol + t*RK_y3);
+    sol = sol + t/6 * (RK_y1 + 2*RK_y2 + 2*RK_y3 + RK_y4);
+}
+
+void AdvectionDiffusionSolver::StrangStep(const double &t){
+    // FV-SE alternating base on strang splitting.
+    AdvectionStep(t/2);
+    difSolver.init(sol);
+    sol = difSolver(t);
+    AdvectionStep(t/2);
+}
+
 void AdvectionDiffusionSolver::solve(){
     std::cout << "Setting initial values..." << std::endl;
     sol = ColVector(M*M);
@@ -136,21 +159,18 @@ void AdvectionDiffusionSolver::solve(){
     phi_face1 = ColVector(M*M);
     u_face0 = ColVector(M*M);
     u_face1 = ColVector(M*M);
+    F_face0 = ColVector(M*M);
+    F_face1 = ColVector(M*M);
+    const double w1 = 1.0 / (2.0-pow(2.0,1.0/3));
+    const double w2 = -pow(2.0,1.0/3) / (2.0-pow(2.0,1.0/3));
 
     int stcl = clock();
     for(double t = 0.0; t+1e-12 < tEnd; t += dT){
-        // multi stage
         std::cout << "Time: " << t << std::endl;
-
-        // FV-SE alternating base on strang spliting
-        auto midsol = sol + dT/4 * Ladv(sol);
-        sol = sol + dT/2 * Ladv(midsol);
-
-        difSolver.init(sol);
-        sol = difSolver(dT);
-
-        midsol = sol + dT/4 * Ladv(sol);
-        sol = sol + dT/2 * Ladv(midsol);
+        // Forest-Ruth splitting.
+        StrangStep(w1*dT);
+        StrangStep(w2*dT);
+        StrangStep(w1*dT);
     }
     std::cout << "Solved. in " << (double)(clock()-stcl)/CLOCKS_PER_SEC << "s." << std::endl;
 }

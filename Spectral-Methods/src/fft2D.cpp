@@ -20,17 +20,11 @@ fft2D::fft2D(const int &_N){
 	for(int i = 0; i < N; i++)
         r[i] = ( r[i/2] / 2 ) | ( (i&1) << (l-1) );
 	for(int i = 1, l = 0; i < N; i <<= 1, l++){
-		Complex wn(cos(M_PI/i), sin(M_PI/i));
-        Complex iwn(cos(M_PI/i), -sin(M_PI/i));
-		int p = i << 1;
-        Complex w(1,0), iw(1,0);
         wns[l].resize(i);
         iwns[l].resize(i);
         for(int k1 = 0; k1 < i; k1++){
-            wns[l][k1] = w;
-            iwns[l][k1] = iw;
-            w = w * wn;
-            iw = iw * iwn;
+            wns[l][k1] = Complex(cos(M_PI*k1/i), sin(M_PI*k1/i));
+            iwns[l][k1] = Complex(cos(M_PI*k1/i), -sin(M_PI*k1/i));
         }
 	}
 }
