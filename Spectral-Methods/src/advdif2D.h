@@ -28,8 +28,8 @@ private:
 
     // Discrete operators
     ColVector Ladv(const ColVector &phi);
-    double F_up(const ColVector &phi, Function2D *u, const int &i, const int &j);
-    double F_right(const ColVector &phi, Function2D *u, const int &i, const int &j);
+    double F_up(const int &i, const int &j);
+    double F_right(const int &i, const int &j);
     double Gdp_phi_up(const ColVector &phi, const int &i, const int &j);
     double Gdp_phi_right(const ColVector &phi, const int &i, const int &j);
     double facephi_up(const ColVector &phi, const int &i, const int &j);

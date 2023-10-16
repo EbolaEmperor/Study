@@ -31,8 +31,8 @@ fft2D::fft2D(const int &_N, const bool &p){
 void fft2D::init(){
     if(useFFTW){
         in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N*N);
-        p = fftw_plan_dft_2d(N, N, in, in, FFTW_FORWARD, FFTW_MEASURE);
-        pinv = fftw_plan_dft_2d(N, N, in, in, FFTW_BACKWARD, FFTW_MEASURE);
+        p = fftw_plan_dft_2d(N, N, in, in, FFTW_BACKWARD, FFTW_MEASURE);
+        pinv = fftw_plan_dft_2d(N, N, in, in, FFTW_FORWARD, FFTW_MEASURE);
         return;
     }
     r.resize(N,0);
@@ -94,6 +94,6 @@ void fft2D::applyFFTW(Array &a, const int &v) const{
     if(v==1) fftw_execute(p);
     else fftw_execute(pinv);
     for(int i = 0; i < N*N; i++){
-        a[i] = Complex(in[i][0], in[i][1]);
+        a[i] = (v==1) ? Complex(in[i][0], in[i][1]) : Complex(in[i][0]/(N*N), in[i][1]/(N*N));
     }
 }
