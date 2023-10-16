@@ -1,7 +1,7 @@
 #ifndef _DIFFUSION_2D_
 #define _DIFFUSION_2D_
 
-#include "matrix.h"
+#include <Eigen/Sparse>
 #include "fft2D.h"
 #include "function2D.h"
 
@@ -23,10 +23,10 @@ public:
     void init(const Function2D &initial);
 
     // Initialize with discrete values.
-    void init(const ColVector &initial);
+    void init(const Eigen::VectorXd &initial);
 
     // Return the solution at time t.
-    ColVector operator () (const double &t) const;
+    Eigen::VectorXd operator () (const double &t) const;
 
     // Output the solution at time t.
     void output(const std::string &fname, const double &t, const double &h) const;

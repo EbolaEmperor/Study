@@ -7,7 +7,17 @@
 
 //------------------------------------------------------Settings----------------------------------------------------------------
 
-AdvectionDiffusionSolver::AdvectionDiffusionSolver(const int &M): M(M), dH(1.0/M), difSolver(M), LadvOp(){
+AdvectionDiffusionSolver::AdvectionDiffusionSolver(const int &M): 
+    M(M), 
+    dH(1.0/M), 
+    difSolver(M), 
+    LadvOp(M*M,M*M), 
+    sol(M*M),
+    u_face0(M*M),
+    u_face1(M*M),
+    Gdpu_face0(M*M),
+    Gdpu_face1(M*M)
+{
     dT = 0.0;
     f = nullptr;
     initial = nullptr;
@@ -77,7 +87,7 @@ void AdvectionDiffusionSolver::F_up(const int &i, const int &j, const double &co
 }
 
 void AdvectionDiffusionSolver::constructLadv(){
-    std::vector<Triple> eles;
+    std::vector< Eigen::Triplet<double> > eles;
     for(int i = 0; i < M; i++)
         for(int j = 0; j < M; j++){
             F_right(i, j, -1.0/dH);
@@ -91,11 +101,11 @@ void AdvectionDiffusionSolver::constructLadv(){
             }
             aRaw.clear();
         }
-    LadvOp.init(M*M, M*M, eles);
+    LadvOp.setFromTriplets(eles.begin(), eles.end());
     eles.clear();
 }
 
-ColVector AdvectionDiffusionSolver::Ladv(const ColVector &phi){
+Eigen::VectorXd AdvectionDiffusionSolver::Ladv(const Eigen::VectorXd &phi){
     return LadvOp * phi;
 }
 
@@ -105,8 +115,8 @@ int AdvectionDiffusionSolver::idx(const int &i, const int &j){
     return (i+M)%M * M + (j+M)%M;
 }
 
-inline double AdvectionDiffusionSolver::solValue(const ColVector &phi, const int &i, const int &j){
-    return phi(idx(i,j));
+inline double AdvectionDiffusionSolver::solValue(const Eigen::VectorXd &phi, const int &i, const int &j){
+    return phi[idx(i,j)];
 }
 
 //---------------------------------------------------output and check error---------------------------------------------------------
@@ -115,7 +125,12 @@ void AdvectionDiffusionSolver::output(const std::string &outname){
     std::cout << "--------------------------------------------------------------" << std::endl;
     std::ofstream out(outname);
     out << std::fixed << std::setprecision(16);
-    out << sol.reshape(M,M) << std::endl;
+    for(int i = 0; i < M; i++){
+        for(int j = 0; j < M; j++){
+            out << sol[i*M+j] << " ";
+        }
+        out << std::endl;
+    }
     out.close();
     std::cout << "Result has been saved to " << outname << std::endl;
     std::cout << "--------------------------------------------------------------" << std::endl;
@@ -126,10 +141,10 @@ void AdvectionDiffusionSolver::output(const std::string &outname){
 void AdvectionDiffusionSolver::AdvectionStep(const double &t){
     // Advection step based on classical RK.
     int cl = clock();
-    ColVector RK_y1 = Ladv(sol);
-    ColVector RK_y2 = Ladv(sol + t/2*RK_y1);
-    ColVector RK_y3 = Ladv(sol + t/2*RK_y2);
-    ColVector RK_y4 = Ladv(sol + t*RK_y3);
+    auto RK_y1 = Ladv(sol);
+    auto RK_y2 = Ladv(sol + t/2*RK_y1);
+    auto RK_y3 = Ladv(sol + t/2*RK_y2);
+    auto RK_y4 = Ladv(sol + t*RK_y3);
     sol = sol + t/6 * (RK_y1 + 2*RK_y2 + 2*RK_y3 + RK_y4);
     advTime += (double)(clock()-cl)/CLOCKS_PER_SEC;
 }
@@ -151,11 +166,6 @@ void AdvectionDiffusionSolver::StrangStep(const double &t){
 
 void AdvectionDiffusionSolver::solve(){
     std::cout << "Setting initial values and constructing Ladv..." << std::endl;
-    sol = ColVector(M*M);
-    u_face0 = ColVector(M*M);
-    u_face1 = ColVector(M*M);
-    Gdpu_face0 = ColVector(M*M);
-    Gdpu_face1 = ColVector(M*M);
     for(int i = 0; i < M; i++)
         for(int j = 0; j < M; j++){
             sol(idx(i,j)) = initial->accInt2D(i*dH, (i+1)*dH, j*dH, (j+1)*dH) * M * M;

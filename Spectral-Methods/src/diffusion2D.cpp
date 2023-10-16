@@ -19,15 +19,15 @@ void Diffusion2Dsolver::init(const Function2D &initial){
     fft.apply(initFcoef, 1);
 }
 
-void Diffusion2Dsolver::init(const ColVector &initial){
+void Diffusion2Dsolver::init(const Eigen::VectorXd &initial){
     initFcoef.resize(N*N);
     for(int i = 0; i < N*N; i++)
-        initFcoef[i] = initial(i);
+        initFcoef[i] = initial[i];
     auto t = initFcoef;
     fft.apply(initFcoef, 1);
 }
 
-ColVector Diffusion2Dsolver::operator () (const double &t) const{
+Eigen::VectorXd Diffusion2Dsolver::operator () (const double &t) const{
     auto coef = initFcoef;
     for(int i = 0; i < N; i++){
         int n = (i+N/2)%N - N/2;
@@ -36,10 +36,10 @@ ColVector Diffusion2Dsolver::operator () (const double &t) const{
             coef[i*N+j] *= exp(-4*M_PI*M_PI*nu*(n*n+m*m)*t);
         }
     }
-    ColVector res(N*N);
+    Eigen::VectorXd res(N*N);
     fft.apply(coef, -1);
     for(int i = 0; i < N*N; i++)
-        res(i) = coef[i].real();
+        res[i] = coef[i].real();
     return res;
 }
 
@@ -48,7 +48,7 @@ void Diffusion2Dsolver::output(const std::string &fname, const double &t, const 
     std::ofstream fout(fname);
     auto res = (*this)(t);
     for(int i = 0; i < res.size(); i++)
-        fout << res(i) << " ";
+        fout << res[i] << " ";
     fout.close();
     std::cout << "Output: Results has been saved to " << fname << std::endl;
 }
@@ -61,7 +61,7 @@ void Diffusion2Dsolver::denseDiscreteOutput(const std::string &fname, const doub
     for(double t = dt; t <= T+1e-14; t += dt){
         auto res = (*this)(t);
         for(int i = 0; i < res.size(); i++)
-            fout << res(i) << " ";
+            fout << res[i] << " ";
         fout << std::endl;
     }
     fout.close();

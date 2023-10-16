@@ -3,13 +3,12 @@
 
 // An advection-diffusion solver based on FV-SE alternating method.
 
-#include "matrix.h"
 #include "idpair.h"
 #include "function2D.h"
 #include "diffusion2D.h"
-#include "sparseMatrix.h"
 #include <cstring>
 #include <unordered_map>
+#include <Eigen/Sparse>
 
 class AdvectionDiffusionSolver{
 private:
@@ -18,16 +17,16 @@ private:
     double dH, dT;
     Function2D *f, *initial, *ux, *uy;
     // ux: velocity in x;    uy: velocity in y
-    ColVector sol;
+    Eigen::VectorXd sol;
     Diffusion2Dsolver difSolver;
-    ColVector u_face0, u_face1;
-    ColVector Gdpu_face0, Gdpu_face1;
+    Eigen::VectorXd u_face0, u_face1;
+    Eigen::VectorXd Gdpu_face0, Gdpu_face1;
     std::unordered_map<int, double> aRaw;
-    SparseMatrix LadvOp;
+    Eigen::SparseMatrix<double> LadvOp;
     double advTime, difTime;
 
     // Discrete operators
-    ColVector Ladv(const ColVector &phi);
+    Eigen::VectorXd Ladv(const Eigen::VectorXd &phi);
     void F_up(const int &i, const int &j, const double &coef);
     void F_right(const int &i, const int &j, const double &coef);
     void Gdp_phi_up(const int &i, const int &j, const double &coef);
@@ -38,7 +37,7 @@ private:
 
     // map the 2D index into 1D index
     int idx(const int &i, const int &j);
-    double solValue(const ColVector &phi, const int &i, const int &j);
+    double solValue(const Eigen::VectorXd &phi, const int &i, const int &j);
     void AdvectionStep(const double &t);
     void DiffusionStep(const double &t);
     void StrangStep(const double &t);
