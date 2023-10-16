@@ -2,16 +2,39 @@
 #include <cstring>
 
 fft2D::~fft2D(){
-    for(auto &arr : wns) Array().swap(arr);
-    for(auto &arr : iwns) Array().swap(arr);
-    std::vector<Array>().swap(wns);
-    std::vector<Array>().swap(iwns);
-    std::vector<int>().swap(r);
     N = 0;
+    if(useFFTW){
+        fftw_destroy_plan(p);
+        fftw_destroy_plan(pinv);
+        fftw_free(in);
+    } else {
+        for(auto &arr : wns) Array().swap(arr);
+        for(auto &arr : iwns) Array().swap(arr);
+        std::vector<Array>().swap(wns);
+        std::vector<Array>().swap(iwns);
+        std::vector<int>().swap(r);
+    }
 }
 
 fft2D::fft2D(const int &_N){
     N = _N;
+    useFFTW = false;
+    init();
+}
+
+fft2D::fft2D(const int &_N, const bool &p){
+    N = _N;
+    if(p) useFFTW = true;
+    init();
+}
+
+void fft2D::init(){
+    if(useFFTW){
+        in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N*N);
+        p = fftw_plan_dft_2d(N, N, in, in, FFTW_FORWARD, FFTW_MEASURE);
+        pinv = fftw_plan_dft_2d(N, N, in, in, FFTW_BACKWARD, FFTW_MEASURE);
+        return;
+    }
     r.resize(N,0);
     int l = 0;
     for(int i = 1; i < N; i <<= 1) l++;
@@ -30,6 +53,10 @@ fft2D::fft2D(const int &_N){
 }
 
 void fft2D::apply(Array &a, const int &v) const{
+    if(useFFTW){
+        applyFFTW(a,v);
+        return;
+    }
 	for(int i = 0; i < N; i++)
         for(int j = 0; j < N; j++)
             if(i<r[i] || i==r[i] && j<r[j]) swap(a[i*N+j], a[r[i]*N+r[j]]);
@@ -57,4 +84,16 @@ void fft2D::apply(Array &a, const int &v) const{
             }
 	}
     if(v==-1) for(auto& z : a) z/=(N*N);
+}
+
+void fft2D::applyFFTW(Array &a, const int &v) const{
+    for(int i = 0; i < N*N; i++){
+        in[i][0] = a[i].real();
+        in[i][1] = a[i].imag();
+    }
+    if(v==1) fftw_execute(p);
+    else fftw_execute(pinv);
+    for(int i = 0; i < N*N; i++){
+        a[i] = Complex(in[i][0], in[i][1]);
+    }
 }
