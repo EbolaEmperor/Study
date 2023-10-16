@@ -67,11 +67,11 @@ double AdvectionDiffusionSolver::Gdp_phi_up(const ColVector &phi_face1, const in
 }
 
 double AdvectionDiffusionSolver::F_right(const ColVector &phi, Function2D *u, const int &i, const int &j){
-    return solValue(phi_face0,i,j) * solValue(u_face0,i,j) + dH*dH/12.0 * Gdp_phi_right(phi_face0,i,j) * Gdp_phi_right(u_face0,i,j);
+    return solValue(phi_face0,i,j) * solValue(u_face0,i,j) + dH*dH/12.0 * Gdp_phi_right(phi_face0,i,j) * solValue(Gdpu_face0,i,j);
 }
 
 double AdvectionDiffusionSolver::F_up(const ColVector &phi, Function2D *u, const int &i, const int &j){
-    return solValue(phi_face1,i,j) * solValue(u_face1,i,j) + dH*dH/12.0 * Gdp_phi_up(phi_face1,i,j) * Gdp_phi_up(u_face1,i,j);
+    return solValue(phi_face1,i,j) * solValue(u_face1,i,j) + dH*dH/12.0 * Gdp_phi_up(phi_face1,i,j) * solValue(Gdpu_face1,i,j);
 }
 
 ColVector AdvectionDiffusionSolver::Ladv(const ColVector &phi){
@@ -79,8 +79,6 @@ ColVector AdvectionDiffusionSolver::Ladv(const ColVector &phi){
         for(int j = 0; j < M; j++){
             phi_face0(idx(i,j)) = facephi_right(phi, i, j);
             phi_face1(idx(i,j)) = facephi_up(phi, i, j);
-            u_face0(idx(i,j)) = ux->intFixX((i+1)*dH, j*dH, (j+1)*dH)/dH;
-            u_face1(idx(i,j)) = uy->intFixY((j+1)*dH, i*dH, (i+1)*dH)/dH;
         }
     ColVector res(M*M);
     if(uIsConst){
@@ -133,17 +131,21 @@ void AdvectionDiffusionSolver::output(const std::string &outname){
 
 void AdvectionDiffusionSolver::AdvectionStep(const double &t){
     // Advection step based on classical RK.
+    int cl = clock();
     ColVector RK_y1 = Ladv(sol);
     ColVector RK_y2 = Ladv(sol + t/2*RK_y1);
     ColVector RK_y3 = Ladv(sol + t/2*RK_y2);
     ColVector RK_y4 = Ladv(sol + t*RK_y3);
     sol = sol + t/6 * (RK_y1 + 2*RK_y2 + 2*RK_y3 + RK_y4);
+    advTime += (double)(clock()-cl)/CLOCKS_PER_SEC;
 }
 
 void AdvectionDiffusionSolver::DiffusionStep(const double &t){
     // Diffusion step based on spectral method.
+    int cl = clock();
     difSolver.init(sol);
     sol = difSolver(t);
+    difTime += (double)(clock()-cl)/CLOCKS_PER_SEC;
 }
 
 void AdvectionDiffusionSolver::StrangStep(const double &t){
@@ -156,16 +158,25 @@ void AdvectionDiffusionSolver::StrangStep(const double &t){
 void AdvectionDiffusionSolver::solve(){
     std::cout << "Setting initial values..." << std::endl;
     sol = ColVector(M*M);
-    for(int i = 0; i < M; i++)
-        for(int j = 0; j < M; j++){
-            sol(idx(i,j)) = initial->accInt2D(i*dH, (i+1)*dH, j*dH, (j+1)*dH) * M * M;
-        }
     phi_face0 = ColVector(M*M);
     phi_face1 = ColVector(M*M);
     u_face0 = ColVector(M*M);
     u_face1 = ColVector(M*M);
+    Gdpu_face0 = ColVector(M*M);
+    Gdpu_face1 = ColVector(M*M);
     F_face0 = ColVector(M*M);
     F_face1 = ColVector(M*M);
+    for(int i = 0; i < M; i++)
+        for(int j = 0; j < M; j++){
+            sol(idx(i,j)) = initial->accInt2D(i*dH, (i+1)*dH, j*dH, (j+1)*dH) * M * M;
+            u_face0(idx(i,j)) = ux->intFixX((i+1)*dH, j*dH, (j+1)*dH)/dH;
+            u_face1(idx(i,j)) = uy->intFixY((j+1)*dH, i*dH, (i+1)*dH)/dH;
+        }
+    for(int i = 0; i < M; i++)
+        for(int j = 0; j < M; j++){
+            Gdpu_face0(idx(i,j)) = Gdp_phi_right(u_face0,i,j);
+            Gdpu_face1(idx(i,j)) = Gdp_phi_up(u_face1,i,j);
+        }
     
     // The coefficients for Forest-Ruth splitting.
     // const double w1 = 1.0 / (2.0-pow(2.0,1.0/3));
@@ -187,4 +198,6 @@ void AdvectionDiffusionSolver::solve(){
         AdvectionStep(dT/6);
     }
     std::cout << "Solved. in " << (double)(clock()-stcl)/CLOCKS_PER_SEC << "s." << std::endl;
+    std::cout << "Advection-step time: " << advTime << "s." << std::endl;
+    std::cout << "Diffusion-step time: " << difTime << "s." << std::endl;
 }

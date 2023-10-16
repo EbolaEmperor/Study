@@ -22,7 +22,9 @@ private:
     Diffusion2Dsolver difSolver;
     ColVector phi_face0, phi_face1;
     ColVector u_face0, u_face1;
+    ColVector Gdpu_face0, Gdpu_face1;
     ColVector F_face0, F_face1;
+    double advTime, difTime;
 
     // Discrete operators
     ColVector Ladv(const ColVector &phi);

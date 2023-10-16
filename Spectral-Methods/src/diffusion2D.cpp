@@ -3,7 +3,7 @@
 #include <fstream>
 #include <iomanip>
 
-Diffusion2Dsolver::Diffusion2Dsolver(const int &N): fft(N), N(N), nu(1.0){}
+Diffusion2Dsolver::Diffusion2Dsolver(const int &N): fft(N,onFFTW), N(N), nu(1.0){}
 
 void Diffusion2Dsolver::setDiffusionCoef(const double &_nu){
     nu = _nu;
