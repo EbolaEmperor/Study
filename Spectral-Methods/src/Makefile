@@ -2,8 +2,8 @@ LIB=-lfftw3
 
 all: testFFT testDiffusion testAdvDif2D
 
-testAdvDif2D: fft2D.o diffusion2D.o matrix.o function2D.o advdif2D.o testAdvDif2D.o
-	g++ fft2D.o diffusion2D.o matrix.o function2D.o advdif2D.o testAdvDif2D.o -o testAdvDif2D -O2 -O3 -Ofast $(LIB)
+testAdvDif2D: fft2D.o diffusion2D.o matrix.o function2D.o advdif2D.o testAdvDif2D.o sparseMatrix.o
+	g++ fft2D.o diffusion2D.o matrix.o function2D.o advdif2D.o testAdvDif2D.o -o testAdvDif2D sparseMatrix.o -O2 -O3 -Ofast $(LIB)
 
 testDiffusion: fft2D.o diffusion2D.o testDiffusion.o matrix.o function2D.o
 	g++ fft2D.o diffusion2D.o testDiffusion.o matrix.o function2D.o -o testDiffusion -O2 -O3 -Ofast $(LIB)
@@ -26,7 +26,7 @@ fft2D.o: fft2D.h fft2D.cpp
 diffusion2D.o: diffusion2D.h diffusion2D.cpp fft2D.h matrix.h function2D.h
 	g++ -c diffusion2D.cpp -O2 -O3 -Ofast
 
-advdif2D.o: advdif2D.cpp advdif2D.h diffusion2D.h fft2D.h matrix.h function2D.h
+advdif2D.o: advdif2D.cpp advdif2D.h diffusion2D.h fft2D.h matrix.h function2D.h sparseMatrix.h
 	g++ -c advdif2D.cpp -O2 -O3 -Ofast
 
 function2D.o: function2D.cpp function2D.h
@@ -34,6 +34,9 @@ function2D.o: function2D.cpp function2D.h
 
 matrix.o: matrix.h matrix.cpp
 	g++ -c matrix.cpp -O2 -O3 -Ofast
+
+sparseMatrix.o: sparseMatrix.h sparseMatrix.cpp
+	g++ -c sparseMatrix.cpp -O2 -O3 -Ofast
 
 clean:
 	rm *.o *.txt testAdvDif2D testDiffusion testFFT
