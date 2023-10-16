@@ -131,7 +131,51 @@
 
 \appendix
 
-\chapter{二维快速傅里叶变换}
+\chapter{二维FFT}
+
+\begin{lemma}
+    二维DFT可归结为如下问题：已知二元多项式
+    \begin{equation*}
+        f(x,y)=\sum_{n=0}^{N-1}\sum_{m=0}^{N-1} a_{n,m}x^ny^m,
+    \end{equation*}
+
+    求$f(\omega_N^j,\omega_N^k),(j,k=0,...,N-1)$的值。
+\end{lemma}
+
+引理很容易验证，关键是如何快速求解这个问题。为此，我们对多项式做奇偶项划分，即令
+\begin{align*}
+    p_1(x,y)&=\sum_{n=0}^{N/2-1}\sum_{m=0}^{N/2-1} a_{2n,2m}x^ny^m,\\
+    p_2(x,y)&=\sum_{n=0}^{N/2-1}\sum_{m=0}^{N/2-1} a_{2n,2m+1}x^ny^m,\\
+    p_3(x,y)&=\sum_{n=0}^{N/2-1}\sum_{m=0}^{N/2-1} a_{2n+1,2m}x^ny^m,\\
+    p_4(x,y)&=\sum_{n=0}^{N/2-1}\sum_{m=0}^{N/2-1} a_{2n+1,2m+1}x^ny^m.
+\end{align*}
+
+于是我们有
+\begin{equation*}
+    f(x,y)=p_1(x^2,y^2)+yp_2(x^2,y^2)+xp_3(x^2,y^2)+xyp_4(x^2,y^2).
+\end{equation*}
+
+现任取整数$j,k\in[0,N/2)$，注意到
+\begin{align*}
+    f(\omega_N^j,\omega_N^k)&=p_1(\omega_{N/2}^j,\omega_{N/2}^k)+\omega_N^kp_2(\omega_{N/2}^j,\omega_{N/2}^k)+\omega_N^jp_3(\omega_{N/2}^j,\omega_{N/2}^k)+\omega_N^j\omega_N^kp_4(\omega_{N/2}^j,\omega_{N/2}^k)\\
+    f(\omega_N^j,\omega_N^{N/2+k})&=p_1(\omega_{N/2}^j,\omega_{N/2}^k)-\omega_N^kp_2(\omega_{N/2}^j,\omega_{N/2}^k)+\omega_N^jp_3(\omega_{N/2}^j,\omega_{N/2}^k)-\omega_N^j\omega_N^kp_4(\omega_{N/2}^j,\omega_{N/2}^k)\\
+    f(\omega_N^{N/2+j},\omega_N^k)&=p_1(\omega_{N/2}^j,\omega_{N/2}^k)+\omega_N^kp_2(\omega_{N/2}^j,\omega_{N/2}^k)-\omega_N^jp_3(\omega_{N/2}^j,\omega_{N/2}^k)-\omega_N^j\omega_N^kp_4(\omega_{N/2}^j,\omega_{N/2}^k)\\
+    f(\omega_N^{N/2+j},\omega_N^{N/2+k})&=p_1(\omega_{N/2}^j,\omega_{N/2}^k)-\omega_N^kp_2(\omega_{N/2}^j,\omega_{N/2}^k)-\omega_N^jp_3(\omega_{N/2}^j,\omega_{N/2}^k)+\omega_N^j\omega_N^kp_4(\omega_{N/2}^j,\omega_{N/2}^k)\\
+\end{align*}
+
+因此，只要我们先算出
+\begin{equation}
+    p_i(\omega_{N/2}^j,\omega_{N/2}^k),(j,k=0,...,N/2-1),\quad i=1,2,3,4.
+\end{equation}
+
+我们就可以再用$O(N)$的时间完成问题求解。不难看出(A.1)式的形式与原问题完全一致，只是$N$换成了$N/2$。我们设求解原问题的时间复杂度为$T(N)$，有：
+\begin{equation*}
+    T(N)=4T\left(\frac{N}{2}\right)+\Theta(N)=\Theta(N^2\log N).
+\end{equation*}
+
+因此我们可以借助分治实现高效求解。但如果使用递归式写法，我们需要在每一层存储奇偶项划分后$p_1,p_2,p_3,p_4$的各项系数，从而空间复杂度也达到$\Theta(N^2\log N)$。我们可以用蝴蝶变换来避免递归，即自底向上模拟分治过程，空间复杂度可以下降到$\Theta(N^2)$。详见代码\verb|fft2D.cpp|。
+
+\newpage
 
 \chapter{本月的心路历程}
 
