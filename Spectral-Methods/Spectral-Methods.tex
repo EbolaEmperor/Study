@@ -1,0 +1,144 @@
+\documentclass[lang=cn,10pt,bibend=bibtex]{elegantbook}
+
+\title{10月份科研报告}
+
+\author{Wenchong Huang}
+\date{Oct. 10, 2023}
+
+\setcounter{tocdepth}{3}
+
+\logo{logo-blue.jpg}
+\cover{cover.jpeg}
+\usepackage{multirow}
+\usepackage{xpatch}
+\makeatletter
+\xpatchcmd{\chapter}
+  {\if@openright\cleardoublepage\else\clearpage\fi}{\par\relax}
+  {}{}
+\makeatother
+
+% 本文档命令
+\usepackage{array, float}
+\newcommand{\ccr}[1]{\makecell{{\color{#1}\rule{1cm}{1cm}}}}
+
+% 修改标题页的橙色带
+% \definecolor{customcolor}{RGB}{32,178,170}
+% \colorlet{coverlinecolor}{customcolor}
+
+\begin{document}
+
+\maketitle
+\frontmatter
+
+\tableofcontents
+
+\mainmatter
+
+\chapter{分离方法}
+
+\section{分离方法介绍}
+
+假设我们有初值问题：
+\begin{equation}
+    \frac{d\phi}{dt}=A(\phi)+B(\phi),\quad \phi(0)=\phi_0.
+\end{equation}
+
+我们有求解器$\mathcal{N}_A(\phi_0,T)$，它输出初值问题
+\begin{equation}
+    \frac{d\phi}{dt}=A(\phi),\quad \phi(0)=\phi_0.
+\end{equation}
+
+在$T$时刻的解。同时也有求解器$\mathcal{N}_B(\phi_0,T)$，它输出初值问题
+\begin{equation}
+    \frac{d\phi}{dt}=B(\phi),\quad \phi(0)=\phi_0.
+\end{equation}
+
+在$T$时刻的解。我们可以借助这两个求解器构造一个分离格式，例如：
+\begin{align*}
+    \phi^\star &= \mathcal{N}_A(\phi_n,k),\\
+    \phi_{n+1} &= \mathcal{N}_B(\phi^\star,k).
+\end{align*}
+
+这个格式有两个性质：
+\begin{enumerate}
+    \item 只要求解器$\mathcal{N}_A$与$\mathcal{N}_B$收敛，那么分离格式也收敛；
+    \item 不论求解器$\mathcal{N}_A$与$\mathcal{N}_B$的精度有多高，在一些特定问题中，该分离格式也只有一阶精度。例如当$A,B$是不交换的线性算子时，可以证明：即使求解器都是精确的，其单步误差也将达到$O(k^2)$。
+\end{enumerate}
+
+\section{二阶时间离散：Strang Splitting}
+
+我们沿用(1.1)(1.2)(1.3)式的符号。Strang Splitting格式\cite{Strang1968}如下：
+\begin{align*}
+    \phi^\star &= \mathcal{N}_A(\phi_n,k/2),\\
+    \phi^{\star\star} &= \mathcal{N}_B(\phi^\star,k),\\
+    \phi_{n+1} &= \mathcal{N}_A(\phi^{\star\star},k/2).
+\end{align*}
+
+为方便后文的表述，我们记由Strang Splitting格式算一步得到的解为：
+\begin{equation}
+    \phi_{n+1} = S(\phi_n,k).
+\end{equation}
+
+\section{四阶时间离散：Forest-Ruth splitting}
+
+我们沿用(1.4)式的符号。Forest-Ruth Splitting格式\cite{Forest1990}如下：
+\begin{align*}
+    \phi^\star &= S(\phi_n,\omega_1k),\\
+    \phi^{\star\star} &= S(\phi^\star,\omega_2k),\\
+    \phi_{n+1} &= S(\phi^{\star\star},\omega_1k).
+\end{align*}
+
+其中
+\begin{equation*}
+    \omega_1=\frac{1}{2-2^{1/3}},\quad \omega_2=-\frac{2^{1/3}}{2-2^{1/3}}
+\end{equation*}
+
+众所周知，扩散方程的逆过程是不稳定的，而这个格式中居然出现了负时间步，它将会是万恶之源。
+
+\section{四阶紧致时间离散：Chin splitting}
+
+我们沿用(1.1)(1.2)(1.3)式的符号。同时我们设求解器$\mathcal{N}_C(\phi_0,\tau,T)$输出初值问题
+\begin{equation}
+    \frac{d\phi}{dt}=A(\phi)+\frac{\tau^2}{48}(2ABA-AAB-BAA)(\phi),\quad \phi(0)=\phi_0.
+\end{equation}
+
+在$T$时刻的解。Chin Splitting格式\cite{Chin1997}如下：
+\begin{align*}
+    \phi^{(1)} &= \mathcal{N}_A(\phi_n,k/6),\\
+    \phi^{(2)} &= \mathcal{N}_B(\phi^{(1)},k/2),\\
+    \phi^{(2)} &= \mathcal{N}_C(\phi^{(2)},k,2k/3),\\
+    \phi^{(4)} &= \mathcal{N}_B(\phi^{(3)},k/2),\\
+    \phi_{n+1} &= \mathcal{N}_A(\phi^{(4)},k/6).
+\end{align*}
+
+当$2ABA-AAB-BAA=0$时，这是一个相当好的格式。
+
+\vspace{5em}
+
+\chapter{谱方法}
+
+\section{热方程的谱方法}
+
+\section{对流扩散方程的有限体-谱分离方法}
+
+\chapter{SAV方法}
+
+\section{Cahn-Hilliard方程的SAV方法}
+
+\section{GePUP-SAV-SDIRK}
+
+\printbibliography[heading=bibintoc,title=\ebibname]
+
+\appendix
+
+\chapter{二维快速傅里叶变换}
+
+\chapter{本月的心路历程}
+
+本月搞懂了三维不规则有限体程序的脉络，并着手处理了一些程序细节。但是两位学长几乎没有给我安排代码任务，导致我在做完手头工作后有了空闲时间，于是开始读GePUP-SAV的文章。阅读文章的过程中，我看不懂SAV，然后就去找了SAV的原始论文来看。看完之后感觉很顺畅，于是想把文章中的数值测试简单复现一下。然后就开始了“递归式”的学习。
+
+我发现文章中是用谱方法离散的，然后去看了一下谱方法。我发现谱方法要用到FFT，但我只学过1维FFT，网上也找不到2维FFT的资料，索性自己按1维的思路推了一遍。然后我用谱方法写了个二维规则周期区域热方程的求解器。有了这个求解器之后我又想把它用在对流扩散方程里，但非线性对流项在做Fourier变换之后反而比原来更复杂了。于是我就想用有限体处理对流项、用谱方法处理扩散项。为了把他们耦合起来，我又去看了些分离方法的文章。
+
+看了一些文章，发现分离方法似乎现在已经没什么人研究了，于是回头把SAV原始文章里的数值测试复现了一下，接着回头读GePUP文章的SAV部分，然后这个月就这么过去了。
+
+\end{document}
