@@ -1,13 +1,15 @@
+LIB=-lfftw3
+
 all: testFFT testDiffusion testAdvDif2D
 
 testAdvDif2D: fft2D.o diffusion2D.o matrix.o function2D.o advdif2D.o testAdvDif2D.o
-	g++ fft2D.o diffusion2D.o matrix.o function2D.o advdif2D.o testAdvDif2D.o -o testAdvDif2D -O2 -O3 -Ofast
+	g++ fft2D.o diffusion2D.o matrix.o function2D.o advdif2D.o testAdvDif2D.o -o testAdvDif2D -O2 -O3 -Ofast $(LIB)
 
 testDiffusion: fft2D.o diffusion2D.o testDiffusion.o matrix.o function2D.o
-	g++ fft2D.o diffusion2D.o testDiffusion.o matrix.o function2D.o -o testDiffusion -O2 -O3 -Ofast
+	g++ fft2D.o diffusion2D.o testDiffusion.o matrix.o function2D.o -o testDiffusion -O2 -O3 -Ofast $(LIB)
 
 testFFT: fft2D.o testFFT.o
-	g++ testFFT.o fft2D.o -o testFFT -O2 -O3 -Ofast
+	g++ testFFT.o fft2D.o -o testFFT -O2 -O3 -Ofast $(LIB)
 
 testAdvDif2D.o: testAdvDif2D.cpp
 	g++ -c testAdvDif2D.cpp -O2 -O3 -Ofast
