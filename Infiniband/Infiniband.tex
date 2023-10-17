@@ -1,0 +1,52 @@
+%!TEX program = xelatex
+% 完整编译: xelatex -> biber/bibtex -> xelatex -> xelatex
+\documentclass[lang=cn,11pt,a4paper]{elegantpaper}
+
+\title{Infiniband调研报告}
+\author{W Huang}
+\date{\zhtoday}
+
+
+% 本文档命令
+\usepackage{array}
+\usepackage{float}
+\usepackage{multirow}
+\newcommand{\ccr}[1]{\makecell{{\color{#1}\rule{1cm}{1cm}}}}
+
+\begin{document}
+
+\maketitle
+
+\section{需求描述}
+
+我们当前并行计算的主要问题是内存带宽不够，导致数据阻塞。要直接解决这个问题，只能更换主板。
+
+另一种解决方案是让16台服务器每台负责两个进程，通过网络连接实现并行计算。我们现在的以太网设备速率是2.5Gbps，根据我们的估计，当前项目需要10Gbps的速率，当然不排除未来需要更高速率的可能性。目前以太网不能满足速率要求，必须将网卡、网线、交换机全套设备更换成infiniBand。
+
+\section{采购方案}
+
+当前市场上infiniBand的品牌只有Mellanox一家，主流配置有100Gbps/200Gbps/400Gbps三种。考虑到我们的计算并不是运行在GPU上的数据密集型计算，采用100Gbps组网方案即可。采购单如下（南京星涌网络科技有限公司报价）
+
+\begin{table}[H]
+    \begin{tabular}{|c|c|c|c|}
+    \hline
+    \textbf{产品类型}       & \textbf{型号}     & \textbf{关键参数}                      & \textbf{单价（估）} \\ \hline
+    交换机                 & MSB7800-ES2F    & 36口，单口100Gbps，吞吐量7Tbps，延迟90ns，136W & 89000          \\ \hline
+    \multirow{3}{*}{网卡} & MCX653105A-ECAT & 6代产品，双口连接，100Gbps，延迟600ns          & 5300           \\ \cline{2-4} 
+                        & MCX653106A-ECAT & 6代产品，单口连接，100Gbps，延迟600ns          & 4300           \\ \cline{2-4} 
+                        & MCX555A-ECAT    & 5代产品，单口连接，100Gbps，延迟600ns          & 3900           \\ \hline
+    网线                  & MFA1A00-E005    & 100Gbps，5米                         & 3800           \\ \hline
+    \end{tabular}
+\end{table}
+
+选择最便宜的网卡，总估价为$88000+16\times 3900+16\times3800=211200$元。
+
+双口的作用仅仅是防止意外损坏，不能让速度翻倍。另外Mellanox的产品从5代到6代只是把上限从100Gbps提高到了200Gbps，我们100Gbps的配置没必要买6代产品。
+
+采购可以联系星涌网络销售人员（康亮，微信号luyeesk），或者咨询其它国内代理商。
+
+\appendix
+%\appendixpage
+\addappheadtotoc
+
+\end{document}
