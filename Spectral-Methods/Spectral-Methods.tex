@@ -133,6 +133,8 @@
 
 \chapter{二维FFT}
 
+\section{公式推导}
+
 \begin{lemma}
     二维DFT可归结为如下问题：已知二元多项式
     \begin{equation*}
@@ -174,6 +176,40 @@
 \end{equation*}
 
 因此我们可以借助分治实现高效求解。但如果使用递归式写法，我们需要在每一层存储奇偶项划分后$p_1,p_2,p_3,p_4$的各项系数，从而空间复杂度也达到$\Theta(N^2\log N)$。我们可以用蝴蝶变换来避免递归，即自底向上模拟分治过程，空间复杂度可以下降到$\Theta(N^2)$。详见代码\verb|fft2D.cpp|。
+
+\section{FFTW库的使用}
+
+FFTW(FFT in the West)库曾经是世界上最快的FFT库，不过现在Intel用mkl优化后的FFTW要更快。以2维FFT为例，在输入输出均为复数数组的情况下，速度大约是我手写FFT的1.2倍。
+
+注意到一个问题：FFT正变换时，输入数组为实数、输出数组为复数；FFT逆变换时，输入数组为复数、输出数组为实数。FFTW能利用这个性质，进一步优化FFT。下面是一个使用FFTW的例程。
+
+\begin{lstlisting}[language=c++]
+    #include <bits/stdc++.h>
+    #include <fftw3.h>
+    using namespace std;
+    
+    const int N = 1024;
+    
+    int main(){
+        auto out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N*(N/2+1));
+        auto in = (double*) fftw_malloc(sizeof(double) * N*N);
+        auto p = fftw_plan_dft_r2c_2d(N, N, in, out, FFTW_MEASURE);
+        auto pinv = fftw_plan_dft_c2r_2d(N, N, out, in, FFTW_MEASURE);
+    
+        for(int i = 0; i < N*N; i++)
+            in[i] = (double)rand()/RAND_MAX;
+        
+        // Run FFT and save to out[]
+        fftw_execute(p);
+    
+        // Run IFFT and save to in[]
+        fftw_execute(pinv);
+    
+        return 0;
+    }
+\end{lstlisting}
+
+实际测试表明，针对输入输出数组的类型优化后的FFTW，其运行速度是我手写FFT的2.4倍。
 
 \newpage
 
