@@ -31,9 +31,15 @@ Eigen::VectorXd Diffusion2Dsolver::operator () (const double &t) const{
     auto coef = initFcoef;
     for(int i = 0; i < N; i++){
         int n = (i+N/2)%N - N/2;
-        for(int j = 0; j < N; j++){
+        // for(int j = 0; j < N; j++){
+        //     int m = (j+N/2)%N - N/2;
+        //     coef[i*N+j] *= exp(-4*M_PI*M_PI*nu*(n*n+m*m)*t);
+        // }
+
+        // Use FFTW dft_r2c
+        for(int j = 0; j <= N/2; j++){
             int m = (j+N/2)%N - N/2;
-            coef[i*N+j] *= exp(-4*M_PI*M_PI*nu*(n*n+m*m)*t);
+            coef[i*(N/2+1)+j] *= exp(-4*M_PI*M_PI*nu*(n*n+m*m)*t);
         }
     }
     Eigen::VectorXd res(N*N);

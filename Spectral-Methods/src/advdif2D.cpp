@@ -140,21 +140,21 @@ void AdvectionDiffusionSolver::output(const std::string &outname){
 
 void AdvectionDiffusionSolver::AdvectionStep(const double &t){
     // Advection step based on classical RK.
-    int cl = clock();
+    CPUTimer timer;
     auto RK_y1 = Ladv(sol);
     auto RK_y2 = Ladv(sol + t/2*RK_y1);
     auto RK_y3 = Ladv(sol + t/2*RK_y2);
     auto RK_y4 = Ladv(sol + t*RK_y3);
-    sol = sol + t/6 * (RK_y1 + 2*RK_y2 + 2*RK_y3 + RK_y4);
-    advTime += (double)(clock()-cl)/CLOCKS_PER_SEC;
+    sol += t/6 * (RK_y1 + 2*RK_y2 + 2*RK_y3 + RK_y4);
+    advTime += timer();
 }
 
 void AdvectionDiffusionSolver::DiffusionStep(const double &t){
     // Diffusion step based on spectral method.
-    int cl = clock();
+    CPUTimer timer;
     difSolver.init(sol);
     sol = difSolver(t);
-    difTime += (double)(clock()-cl)/CLOCKS_PER_SEC;
+    difTime += timer();
 }
 
 void AdvectionDiffusionSolver::StrangStep(const double &t){

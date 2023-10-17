@@ -24,6 +24,7 @@ private:
 
     // Arrays for fftw
     fftw_complex *in;
+    double *out;
     fftw_plan p, pinv;
 
     // Use FFTW if set to be true [default=false].

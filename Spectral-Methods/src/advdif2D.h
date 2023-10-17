@@ -1,6 +1,10 @@
 #ifndef _ADV_DIF_H_
 #define _ADV_DIF_H_
 
+// Use MKL to accelerate Eigen
+#define EIGEN_USE_MKL_ALL
+#define EIGEN_VECTORIZE_SSE4_2
+
 // An advection-diffusion solver based on FV-SE alternating method.
 
 #include "idpair.h"
@@ -9,6 +13,19 @@
 #include <cstring>
 #include <unordered_map>
 #include <Eigen/Sparse>
+#include <chrono>
+
+struct CPUTimer
+{
+  using HRC = std::chrono::high_resolution_clock;
+  std::chrono::time_point<HRC>  start;
+  CPUTimer() { reset(); }
+  void reset() { start = HRC::now(); }
+  double operator() () const {
+    std::chrono::duration<double> e = HRC::now() - start;
+    return e.count();
+  }
+};
 
 class AdvectionDiffusionSolver{
 private:

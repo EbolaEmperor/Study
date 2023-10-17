@@ -1,10 +1,11 @@
 LIB=-lfftw3
 OPT=-O2 -O3 -Ofast -msse -msse2 -msse3 -mmmx -m3dnow
+SO=/home/wenchong/intel/oneapi/mkl/2023.2.0/lib/intel64/libmkl_rt.so
 
-all: testFFT testDiffusion testAdvDif2D
+all: testAdvDif2D testDiffusion testFFT
 
 testAdvDif2D: fft2D.o diffusion2D.o function2D.o advdif2D.o testAdvDif2D.o
-	g++ fft2D.o diffusion2D.o function2D.o advdif2D.o testAdvDif2D.o -o testAdvDif2D $(OPT) $(LIB)
+	g++ fft2D.o diffusion2D.o function2D.o advdif2D.o testAdvDif2D.o $(SO) -o testAdvDif2D $(OPT) $(LIB)
 
 testDiffusion: fft2D.o diffusion2D.o testDiffusion.o function2D.o
 	g++ fft2D.o diffusion2D.o testDiffusion.o function2D.o -o testDiffusion $(OPT) $(LIB)
