@@ -4,6 +4,19 @@
 #include <Eigen/Sparse>
 #include "fft2D.h"
 #include "function2D.h"
+#include <chrono>
+
+struct CPUTimer
+{
+  using HRC = std::chrono::high_resolution_clock;
+  std::chrono::time_point<HRC>  start;
+  CPUTimer() { reset(); }
+  void reset() { start = HRC::now(); }
+  double operator() () const {
+    std::chrono::duration<double> e = HRC::now() - start;
+    return e.count();
+  }
+};
 
 class Diffusion2Dsolver{
 private:

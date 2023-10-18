@@ -15,5 +15,8 @@ int main(int argc, char * argv[]){
     Diffusion2Dsolver solver(stoi(argv[1]));
     solver.init(g);
     solver.denseDiscreteOutput("result-dense.txt", 0.01, 0.3);
+    CPUTimer timer;
+    auto v = solver(0.05);
+    cout << "Solved in " << timer() << "s." << endl;
     return 0;
 }

@@ -111,25 +111,195 @@
     \phi_{n+1} &= \mathcal{N}_A(\phi^{(4)},k/6).
 \end{align*}
 
-当$2ABA-AAB-BAA=0$时，这是一个相当好的格式。
+当
+\begin{equation}
+    2ABA-AAB-BAA=0
+\end{equation}
+
+时，这是一个相当好的格式。
 
 \vspace{5em}
 
 \chapter{谱方法}
 
+\vspace{-1em}
+
 \section{热方程的谱方法}
 
+\subsection{方法描述}
+
+考虑$[0,1]^2$上的周期边界热方程
+\begin{equation*}
+    \frac{\partial \phi}{\partial t}=\Delta \phi.
+\end{equation*}
+
+对$\phi$做离散傅里叶变换，得到
+\begin{equation*}
+    \phi(x,y,t)\approx \frac{1}{(2N+1)^2} \sum_{n,m=-N}^N \hat{\phi}_{n,m}(t)e^{-2\pi\mathbf{i}(nx+my)}.
+\end{equation*}
+
+代入热方程，即得
+\begin{equation*}
+    \frac{d \hat{\phi}_{n,m}}{d t}=-4\pi^2(n^2+m^2) \hat{\phi}_{n,m},\qquad n,m=-N,...,N.
+\end{equation*}
+
+这些ODE可以独立求解，得到
+\begin{equation}
+    \hat{\phi}_{n,m}(t)=\exp(-4\pi^2(n^2+m^2)) \hat{\phi}_{n,m}(0),\qquad n,m=-N,...,N.
+\end{equation}
+
+于是我们得到谱方法：
+\begin{enumerate}
+    \item 对$\phi(x_j,y_k,0)(j,k=0,...,2N)$做离散傅里叶变换得到$\hat{\phi}_{n,m}(0)(n,m=-N,...,N)$.
+    \item 由(2.1)式计算$\hat{\phi}_{n,m}(t)(n,m=-N,...,N)$.
+    \item 对$\hat{\phi}_{n,m}(t)(n,m=-N,...,N)$做离散傅里叶逆变换得到$\phi(x_j,y_k,t)(j,k=0,...,2N)$。
+\end{enumerate}
+
+其中$x_j=\frac{j}{2N+1},y_k=\frac{k}{2N+1}$。朴素的谱方法要求边界必须满足周期条件，并且必须使用规则等分网格。
+
+\subsection{数值算例}
+
+我们取初始条件
+\begin{equation}
+    \phi_0(x,y)=\exp((-(x-0.5)^2-(y-0.5)^2)\times 60).
+\end{equation}
+
+求方程在$T=0.05$时刻的解，测试结果如下表，误差由Richardson外插法估计（注意时间单位为\textbf{毫秒}，且运行时间不包含初始化时间）。
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{c|cccc}
+    \textbf{$M$}              & 64           & 128          & 256          & 512   \\ \hline
+    1范数误差                  & 1.04517e-13   & 7.09259e-13   & 9.18621e-13  & 2.63755e-14 \\
+    2范数误差                  & 1.14391e-13   & 7.10592e-13   & 9.19695e-13  & 3.28119e-14 \\
+    $\infty$范数误差           & 2.25001e-13   & 8.25000e-13   & 1.05000e-12  & 1.00017e-13 \\
+    运行时间(\textbf{ms})                & 0.0502              & 0.302             & 0.788          & 4.18
+    \end{tabular}
+    \caption{谱方法解热方程的测试结果}
+\end{table}
+
+这些误差几乎都是舍入误差的累积，因此无法算收敛阶。
+
+\vspace{-.5em}
+
 \section{对流扩散方程的有限体-谱分离方法}
+
+\vspace{-.5em}
+
+\subsection{方法描述}
+
+考虑$[0,1]^2$上的周期边界对流扩散方程
+\begin{equation*}
+    \frac{\partial \phi}{\partial t}=\nabla\cdot(\mathbf{u}\phi)+\nu \Delta\phi.
+\end{equation*}
+
+设求解器$\mathcal{N}_A(\phi_0,T)$它输出初值问题
+\begin{equation}
+    \frac{d\phi}{dt}=\nabla\cdot(\mathbf{u}\phi),\quad \phi(0)=\phi_0.
+\end{equation}
+
+在$T$时刻的解。具体地，我们对$\phi$做有限体积离散，然后对流算子做四阶有限体积离散，时间上再采用经典RK方法。设求解器$\mathcal{N}_B(\phi_0,T)$它输出初值问题
+\begin{equation}
+    \frac{d\phi}{dt}=\nu \Delta\phi,\quad \phi(0)=\phi_0.
+\end{equation}
+
+在$T$时刻的解，内部采用谱方法。
+
+最后采用Forest-Ruth Splitting或者Chin Splitting将二者耦合。其中(1.5)式的求解器$\mathcal{N}_C$由$\mathcal{N}_A$替代，但注意到对流扩散方程不满足(1.6)式，因此这个替代是不精确的，可能导致Chin Splitting掉阶。
+
+\vspace{-.5em}
+
+\subsection{数值算例}
+
+我们取$\nu=0.001$，及初始条件
+\begin{equation}
+    \phi_0(x,y)=\exp((-(x-0.5)^2-(y-0.75)^2)\times 100\log(10^{16})).
+\end{equation}
+
+也就是《数学实践》课程大作业的第二个算例。在$T=10$时刻，其数值解如下图所示。
+
+\vspace{-1em}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{eps/AdvDif.eps}
+\end{figure}
+
+测试结果如下表。
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{c|ccccccc}
+    \textbf{$M$}              & 64          & 收敛阶 & 128         & 收敛阶 & 256         & 收敛阶 & 512   \\ \hline
+    1范数误差                  & 9.74830e-08 & 3.98  & 6.18924e-09 & 3.99  & 3.88379e-10 &  4.00 & 2.42993e-11 \\
+    2范数误差                  & 1.75527e-07 & 3.98  & 1.11599e-08 & 3.99  & 7.00492e-10 &  4.00 & 4.38596e-11 \\
+    $\infty$范数误差           & 7.90676e-07 & 3.94  & 5.16717e-08 & 3.99  & 3.26315e-09 &  3.99 & 2.05022e-10 \\
+    运行时间(s)                & 5           &       & 41          &       & 390         &       & 3503
+    \end{tabular}
+    \caption{当时大作业的测试结果}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{c|ccccccc}
+    \textbf{$M$}              & 64          & 收敛阶 & 128         & 收敛阶 & 256         & 收敛阶 & 512   \\ \hline
+    1范数误差                  & 9.81486e-08 & 3.98  & 6.22740e-09 &  - & 无法估计误差 &  - & - \\
+    2范数误差                  & 1.74020e-07 & 3.98  & 1.10630e-08 &  - & 无法估计误差 &  - & - \\
+    $\infty$范数误差           & 8.14289e-07 & 3.97  & 5.20873e-08 &  - & 无法估计误差 &  - & - \\
+    运行时间(s)                & 0.103           &       & 0.854          &       & 8.96         &       & -
+    \end{tabular}
+    \caption{Forest-Ruth Splitting的测试结果}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{c|ccccccc}
+    \textbf{$M$}              & 64          & 收敛阶 & 128         & 收敛阶 & 256         & 收敛阶 & 512   \\ \hline
+    1范数误差                  & 9.73896e-08 & 4.00  & 6.07244e-09 & 3.96  & 3.91085e-10 &  3.02 & 4.81695e-11 \\
+    2范数误差                  & 1.72842e-07 & 4.00  & 1.07871e-08 & 4.00  & 6.75903e-10 &  3.13 & 7.69678e-11 \\
+    $\infty$范数误差           & 8.04398e-07 & 3.98  & 5.08533e-08 & 3.87  & 3.48553e-09 &  3.35 & 3.42374e-10 \\
+    运行时间(s)                & 0.0515          &       & 0.517          &       & 4.56         &       & 50.6
+    \end{tabular}
+    \caption{Chin Splitting的测试结果}
+\end{table}
+
+从时间上看，比起当时的大作业，运算速度有了质的飞跃。
+
+不过，Forest-Ruth Splitting最多只能算到$256$的网格，因为在$512$的网格中，扩散项的负时间步导致了指数爆炸：在一个负时间步中，最高频的谱需要乘约$2\times 10^{37}$，这对浮点精度来说是灾难。
+
+另外，Chin Splitting在256到512时掉阶的原因可能是用$\mathcal{N}_A$代替$\mathcal{N}_C$的原因，也有可能是谱方法的固有误差累积。从上一节的测试，可以发现每次求解都有\verb|1e-13|的固有误差，如果经过多个时间步累积，可能会导致它成为主要的误差来源。
+
+我希望原因是后者，这样$\mathcal{N}_A$代替$\mathcal{N}_C$至少在精度足够高的环境下可行，当然还需要一些理论验证。
+
+\vspace{5em}
 
 \chapter{SAV方法}
 
 \section{Cahn-Hilliard方程的SAV方法}
 
+考虑能量泛函
+\begin{equation}
+    E[\phi(\mathbf{x})]=\int_\Omega\left(\frac{1}{2}|\nabla \phi|^2+F(\phi)\right)\;d\mathbf{x}.
+\end{equation}
+
+以及如下形式的Cahn-Hilliard方程：
+\begin{align}
+    \frac{\partial \phi}{\partial t}&=\Delta\mu,\\
+    \mu&=\frac{\delta E}{\delta\phi}=-\Delta \phi+F'(\phi).
+\end{align}
+
 \section{GePUP-SAV-SDIRK}
+
+\vspace{5em}
 
 \printbibliography[heading=bibintoc,title=\ebibname]
 
 \appendix
+
+\newpage
 
 \chapter{二维FFT}
 
