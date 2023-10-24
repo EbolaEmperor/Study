@@ -1,0 +1,49 @@
+\documentclass[lang=cn,10pt,bibend=bibtex]{elegantbook}
+
+\title{空间自适应网格研究报告}
+
+\author{Wenchong Huang}
+\date{Oct. 10, 2023}
+
+\setcounter{tocdepth}{3}
+
+\logo{logo-blue.jpg}
+\cover{cover.jpeg}
+\usepackage{multirow}
+\usepackage{xpatch}
+\makeatletter
+\xpatchcmd{\chapter}
+  {\if@openright\cleardoublepage\else\clearpage\fi}{\par\relax}
+  {}{}
+\makeatother
+
+% 本文档命令
+\usepackage{array, float}
+\newcommand{\ccr}[1]{\makecell{{\color{#1}\rule{1cm}{1cm}}}}
+
+% 修改标题页的橙色带
+% \definecolor{customcolor}{RGB}{32,178,170}
+% \colorlet{coverlinecolor}{customcolor}
+
+\begin{document}
+
+\maketitle
+\frontmatter
+
+\tableofcontents
+
+\mainmatter
+
+\chapter{初步想法}
+
+我们设想的网格自适应方式是：对于一个控制体，如果它自身或与它相邻的控制体被切割，那么把它等分成$2^D$份。重复这个过程，设定一个最细的网格宽度。
+
+（Q1）网格如何编号？一种可能的方式如下图所示。这些格点用树形结构存储，然后按图示下标映射到一个列向量里。
+
+（Q2）如何生成粗细网格交界处控制体的Stencil？一种可能的方案是基于PLG选点，再最小二乘拟合。另一种是填充Ghost Cells，然后用标准格式，但是如何填充Ghost？
+
+（Q3）在边界附近的控制体如何处理？可以沿用切割边界控制体的方案。或者另一种选择是非贴体网格：因为自适应网格在边界附近已经足够细，可以考虑丢弃被边界切割的控制体。
+
+（Q4）采用何种多重网格？可以沿用几何多重网格+块松弛的方案，但考虑到大部分控制体都集中在边界附近，它们的Stencil几乎都是不规则的，块松弛的代价可能太大。我们可能会考虑代数多重网格。
+
+\end{document}
