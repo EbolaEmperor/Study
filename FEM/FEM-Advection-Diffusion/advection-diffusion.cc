@@ -28,6 +28,9 @@
 #include <fstream>
 #include <iostream>
 
+// Our test velocity field is divergence-free.
+#define DIVERGENCE_FREE
+
 using namespace dealii;
 
 const double diffusion_coefficient = 0.001;
@@ -38,7 +41,11 @@ class VelocityField : public Function<dim>
 public:
   virtual void vector_value(const Point<dim>  &p,
                         Vector<double> &values) const override;
+
+#ifndef DIVERGENCE_FREE
   double divergence(const Point<dim>  &p) const;
+#endif
+
 };
 
 
@@ -53,13 +60,14 @@ void VelocityField<dim>::vector_value(const Point<dim>  &p,
 }
 
 
+#ifndef DIVERGENCE_FREE
 template <int dim>
 double VelocityField<dim>::divergence(const Point<dim>  &p) const
 {
   Assert(dim == 2, ExcNotImplemented());
-  return 0.2 * M_PI * ( cos(M_PI*p[0]) * sin(M_PI*p[0]) * sin(2*M_PI*p[1])
-                      - sin(2*M_PI*p[0]) * sin(M_PI*p[1]) * cos(M_PI*p[1]) );
+  return 0;
 }
+#endif
 
 
 template <int dim>
@@ -104,7 +112,11 @@ private:
   SparsityPattern      sparsity_pattern;
   SparseMatrix<double> mass_matrix;
   SparseMatrix<double> laplace_matrix;
+
+#ifndef DIVERGENCE_FREE
   SparseMatrix<double> divergence_velocity_matrix;
+#endif
+  
   SparseMatrix<double> velocity_gradient_matrix;
   SparseMatrix<double> system_matrix;
 
@@ -218,7 +230,11 @@ void AdvectionDiffusionEquation<dim>::setup_system()
 
   mass_matrix.reinit(sparsity_pattern);
   laplace_matrix.reinit(sparsity_pattern);
+
+#ifndef DIVERGENCE_FREE
   divergence_velocity_matrix.reinit(sparsity_pattern);
+#endif
+
   velocity_gradient_matrix.reinit(sparsity_pattern);
   system_matrix.reinit(sparsity_pattern);
 
@@ -250,18 +266,26 @@ void AdvectionDiffusionEquation<dim>::setup_system()
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
+
+#ifndef DIVERGENCE_FREE
           double divu = velocity.divergence( fe_values.quadrature_point(q_index) );
+#endif
+
           velocity.vector_value( fe_values.quadrature_point(q_index), u );
 
           for (const unsigned int i : fe_values.dof_indices())
             {
               for (const unsigned int j : fe_values.dof_indices())
               {
+
+#ifndef DIVERGENCE_FREE
                 cell_matrix_1(j, i) +=
                   (divu                             *  // div(u)
                    fe_values.shape_value(i, q_index) * // phi_i(x_q)
                    fe_values.shape_value(j, q_index) * // phi_j(x_q)
                    fe_values.JxW(q_index));            // dx
+#endif
+
                 auto gradj = fe_values.shape_grad(i, q_index);
                 cell_matrix_2(j, i) +=
                   ((u[0] * gradj[0] + u[1] * gradj[1])  *  // u(x_q) dot grad_phi_j(x_q)
@@ -274,9 +298,13 @@ void AdvectionDiffusionEquation<dim>::setup_system()
       for (const unsigned int i : fe_values.dof_indices())
         for (const unsigned int j : fe_values.dof_indices())
         {
+
+#ifndef DIVERGENCE_FREE
           divergence_velocity_matrix.add(local_dof_indices[i],
                                          local_dof_indices[j],
                                          cell_matrix_1(i, j));
+#endif
+          
           velocity_gradient_matrix.add(local_dof_indices[i],
                                        local_dof_indices[j],
                                        cell_matrix_2(i, j));
@@ -327,8 +355,12 @@ start_time_iteration:
 
     // setup right side term
     mass_matrix.vmult(system_rhs, prev_solution);
+
+#ifndef DIVERGENCE_FREE
     divergence_velocity_matrix.vmult(tmp, prev_solution);
     system_rhs.add(-time_step, tmp);
+#endif
+
     velocity_gradient_matrix.vmult(tmp, prev_solution);
     system_rhs.add(-time_step, tmp);
     laplace_matrix.vmult(tmp, prev_solution);
@@ -348,8 +380,12 @@ start_time_iteration:
     // setup right side term
     middle_solution += prev_solution;
     mass_matrix.vmult(system_rhs, prev_solution);
+
+#ifndef DIVERGENCE_FREE
     divergence_velocity_matrix.vmult(tmp, middle_solution);
     system_rhs.add(-0.5*time_step, tmp);
+#endif
+
     velocity_gradient_matrix.vmult(tmp, middle_solution);
     system_rhs.add(-0.5*time_step, tmp);
     laplace_matrix.vmult(tmp, middle_solution);
