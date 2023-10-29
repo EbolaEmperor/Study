@@ -391,6 +391,7 @@ start_time_iteration:
     laplace_matrix.vmult(tmp, middle_solution);
     system_rhs.add(-0.5*time_step, tmp);
 
+    constraints.condense(system_matrix, system_rhs);
     solve_time_step(solution);
     output_result();
 
