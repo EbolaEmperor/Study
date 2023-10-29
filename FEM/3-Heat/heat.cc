@@ -343,19 +343,6 @@ start_time_iteration:
     // constriant hanging verteces
     constraints.condense(system_matrix, system_rhs);
     
-    // boundary conditions
-    BoundaryValues<dim> boundary_values_function;
-    boundary_values_function.set_time(time);
-    std::map<types::global_dof_index, double> boundary_values;
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                              0,
-                                              boundary_values_function,
-                                              boundary_values);
-    MatrixTools::apply_boundary_values(boundary_values,
-                                        system_matrix,
-                                        solution,
-                                        system_rhs);
-    
     solve_time_step();
     output_result();
 
