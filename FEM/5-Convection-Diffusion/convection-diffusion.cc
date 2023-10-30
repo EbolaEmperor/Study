@@ -32,7 +32,6 @@
 using namespace dealii;
 
 const double diffusion_coefficient = 0.01;
-int level;
 
 //----------------------------Custom Settings------------------------------
 
@@ -135,7 +134,7 @@ double ForcingTerm2<dim>::value(const Point<dim> & p,
 template <int dim>
 class ConvectionDiffusionEquation{
 public:
-  ConvectionDiffusionEquation();
+  ConvectionDiffusionEquation(const int &, const double &);
   void run();
 
 private:
@@ -155,11 +154,10 @@ private:
   SparsityPattern      sparsity_pattern;
   SparseMatrix<double> mass_matrix;
   SparseMatrix<double> laplace_matrix;
-  SparseMatrix<double> convection_matrix_pu1dx;
-  SparseMatrix<double> convection_matrix_pu1dy;
-  SparseMatrix<double> convection_matrix_pu2dx;
-  SparseMatrix<double> convection_matrix_pu2dy;
   SparseMatrix<double> system_matrix;
+
+  Vector<double> convection_u1;
+  Vector<double> convection_u2;
 
   Vector<double> solution_u1;
   Vector<double> solution_u2;
@@ -167,6 +165,8 @@ private:
   Vector<double> prev_solution_u2;
   Vector<double> system_rhs;
 
+  int      level;
+  double   end_time;
   double   time;
   double   time_step;
   unsigned timestep_number;
@@ -177,10 +177,13 @@ private:
 
 
 template <int dim>
-ConvectionDiffusionEquation<dim>::ConvectionDiffusionEquation()
+ConvectionDiffusionEquation<dim>::ConvectionDiffusionEquation
+  (const int &N, const double &T)
   : fe(1)
   , dof_handler(triangulation)
-  , time_step(1. / (500 * (1<<level)))
+  , level(N)
+  , end_time(T)
+  , time_step(1. / (500 * (1<<N)))
 {}
 
 
@@ -351,20 +354,16 @@ template <int dim>
 void ConvectionDiffusionEquation<dim>::setup_convection
       (const Vector<double>& u1, const Vector<double>& u2)
 {
-  convection_matrix_pu1dx.reinit(sparsity_pattern);
-  convection_matrix_pu1dy.reinit(sparsity_pattern);
-  convection_matrix_pu2dx.reinit(sparsity_pattern);
-  convection_matrix_pu2dy.reinit(sparsity_pattern);
+  convection_u1.reinit(solution_u1.size());
+  convection_u2.reinit(solution_u1.size());
 
 #ifdef NO_CONVECTION
   return;
 #endif
 
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
-  FullMatrix<double> cell_matrix_pu1dx(dofs_per_cell, dofs_per_cell);
-  FullMatrix<double> cell_matrix_pu1dy(dofs_per_cell, dofs_per_cell);
-  FullMatrix<double> cell_matrix_pu2dx(dofs_per_cell, dofs_per_cell);
-  FullMatrix<double> cell_matrix_pu2dy(dofs_per_cell, dofs_per_cell);
+  Vector<double> cell_convection_u1(dofs_per_cell);
+  Vector<double> cell_convection_u2(dofs_per_cell);
 
   FEValues<dim> fe_values(fe,
                           QGauss<dim>(fe.degree+1),
@@ -374,10 +373,8 @@ void ConvectionDiffusionEquation<dim>::setup_convection
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
-      cell_matrix_pu1dx = 0.;
-      cell_matrix_pu1dy = 0.;
-      cell_matrix_pu2dx = 0.;
-      cell_matrix_pu2dy = 0.;
+      cell_convection_u1 = 0.;
+      cell_convection_u2 = 0.;
       fe_values.reinit(cell);
       cell->get_dof_indices(local_dof_indices);
 
@@ -392,45 +389,33 @@ void ConvectionDiffusionEquation<dim>::setup_convection
             for(const unsigned int k : fe_values.dof_indices())
             {
               auto grad_phi_k = fe_values.shape_grad(k, q_index);
-              cell_matrix_pu1dx(i, j) += u1[local_dof_indices[k]] * grad_phi_k[0] * phi_ij_dx;
-              cell_matrix_pu1dy(i, j) += u1[local_dof_indices[k]] * grad_phi_k[1] * phi_ij_dx;
-              cell_matrix_pu2dx(i, j) += u2[local_dof_indices[k]] * grad_phi_k[0] * phi_ij_dx;
-              cell_matrix_pu2dy(i, j) += u2[local_dof_indices[k]] * grad_phi_k[1] * phi_ij_dx;
+              cell_convection_u1(i) += u1[local_dof_indices[j]] * u1[local_dof_indices[k]] * grad_phi_k[0] * phi_ij_dx
+                                     + u2[local_dof_indices[j]] * u1[local_dof_indices[k]] * grad_phi_k[1] * phi_ij_dx;
+              cell_convection_u2(i) += u1[local_dof_indices[j]] * u2[local_dof_indices[k]] * grad_phi_k[0] * phi_ij_dx
+                                     + u2[local_dof_indices[j]] * u2[local_dof_indices[k]] * grad_phi_k[1] * phi_ij_dx;
             }
           }
       }
 
       // distribute to global
       for (const unsigned int i : fe_values.dof_indices())
-        for (const unsigned int j : fe_values.dof_indices())
-        {
-          convection_matrix_pu1dx.add(local_dof_indices[i],
-                                      local_dof_indices[j],
-                                      cell_matrix_pu1dx(i, j));
-          convection_matrix_pu1dy.add(local_dof_indices[i],
-                                      local_dof_indices[j],
-                                      cell_matrix_pu1dy(i, j));
-          convection_matrix_pu2dx.add(local_dof_indices[i],
-                                      local_dof_indices[j],
-                                      cell_matrix_pu2dx(i, j));
-          convection_matrix_pu2dy.add(local_dof_indices[i],
-                                      local_dof_indices[j],
-                                      cell_matrix_pu2dy(i, j));
-        }
+      {
+        convection_u1[local_dof_indices[i]] += cell_convection_u1[i];
+        convection_u2[local_dof_indices[i]] += cell_convection_u2[i];
+      }
     }
 }
 
 
 template <int dim>
 void ConvectionDiffusionEquation<dim>::run(){
-  const unsigned initial_global_refinement = 2 + level;
+  const unsigned initial_global_refinement = 1 + level;
   const unsigned n_adaptive_pre_refinement_steps = 4;
   Vector<double> tmp;
   Vector<double> middle_solution_u1;
   Vector<double> middle_solution_u2;
   Vector<double> forcing_term_1;
   Vector<double> forcing_term_2;
-  double end_time = 1.0;
   unsigned pre_refinement_step = 0;
 
   make_mesh();
@@ -481,10 +466,7 @@ start_time_iteration:
     mass_matrix.vmult(system_rhs, prev_solution_u1);
     laplace_matrix.vmult(tmp, prev_solution_u1);
     system_rhs.add(-0.5*time_step, tmp);
-    convection_matrix_pu1dx.vmult(tmp, prev_solution_u1);
-    system_rhs.add(-time_step, tmp);
-    convection_matrix_pu1dy.vmult(tmp, prev_solution_u2);
-    system_rhs.add(-time_step, tmp);
+    system_rhs.add(-time_step, convection_u1);
 
     rhs_func_1.set_time(time-time_step);
     VectorTools::create_right_hand_side(dof_handler,
@@ -504,10 +486,7 @@ start_time_iteration:
     mass_matrix.vmult(system_rhs, prev_solution_u2);
     laplace_matrix.vmult(tmp, prev_solution_u2);
     system_rhs.add(-0.5*time_step, tmp);
-    convection_matrix_pu2dx.vmult(tmp, prev_solution_u1);
-    system_rhs.add(-time_step, tmp);
-    convection_matrix_pu2dy.vmult(tmp, prev_solution_u2);
-    system_rhs.add(-time_step, tmp);
+    system_rhs.add(-time_step, convection_u2);
 
     rhs_func_2.set_time(time-time_step);
     VectorTools::create_right_hand_side(dof_handler,
@@ -522,11 +501,13 @@ start_time_iteration:
 
     //------------------------------second stage-------------------------------------
 
-    setup_convection(middle_solution_u1, middle_solution_u2);
-
     // compute u** = u_prev + u*
     middle_solution_u1 += prev_solution_u1;
     middle_solution_u2 += prev_solution_u2;
+    middle_solution_u1 *= 0.5;
+    middle_solution_u2 *= 0.5;
+
+    setup_convection(middle_solution_u1, middle_solution_u2);
 
     // setup system_matrix
     system_matrix.copy_from(mass_matrix);
@@ -534,11 +515,8 @@ start_time_iteration:
     // setup right side term
     mass_matrix.vmult(system_rhs, prev_solution_u1);
     laplace_matrix.vmult(tmp, middle_solution_u1);
-    system_rhs.add(-0.5*time_step, tmp);
-    convection_matrix_pu1dx.vmult(tmp, middle_solution_u1);
-    system_rhs.add(-0.5*time_step, tmp);
-    convection_matrix_pu1dy.vmult(tmp, middle_solution_u2);
-    system_rhs.add(-0.5*time_step, tmp);
+    system_rhs.add(-time_step, tmp);
+    system_rhs.add(-time_step, convection_u1);
 
     rhs_func_1.set_time(time);
     VectorTools::create_right_hand_side(dof_handler,
@@ -557,11 +535,8 @@ start_time_iteration:
     // setup right side term
     mass_matrix.vmult(system_rhs, prev_solution_u2);
     laplace_matrix.vmult(tmp, middle_solution_u2);
-    system_rhs.add(-0.5*time_step, tmp);
-    convection_matrix_pu2dx.vmult(tmp, middle_solution_u1);
-    system_rhs.add(-0.5*time_step, tmp);
-    convection_matrix_pu2dy.vmult(tmp, middle_solution_u2);
-    system_rhs.add(-0.5*time_step, tmp);
+    system_rhs.add(-time_step, tmp);
+    system_rhs.add(-time_step, convection_u2);
 
     rhs_func_2.set_time(time);
     VectorTools::create_right_hand_side(dof_handler,
@@ -607,12 +582,15 @@ start_time_iteration:
 
 
 int main(int argc, const char *argv[]){
-  if(argc != 2){
-    std::cerr << "Param error!" << std::endl;
+  if(argc != 3){
+    std::cerr << "Param error! Please run with command" << std::endl;
+    std::cerr << "./convection-diffusion N T" << std::endl;
+    std::cerr << "where N is the level of base grid, T is end_time." << std::endl;
     return -1;
   }
-  level = std::stoi(argv[1]);
-  ConvectionDiffusionEquation<2> convection_diffusion_equation;
+  int level = std::stoi(argv[1]);
+  double end_time = std::stod(argv[2]);
+  ConvectionDiffusionEquation<2> convection_diffusion_equation(level, end_time);
   convection_diffusion_equation.run();
   return 0;
 }
