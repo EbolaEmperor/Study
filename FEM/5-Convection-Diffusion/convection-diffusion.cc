@@ -364,40 +364,45 @@ void ConvectionDiffusionEquation<dim>::setup_convection
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
   Vector<double> cell_convection_u1(dofs_per_cell);
   Vector<double> cell_convection_u2(dofs_per_cell);
+  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
+  QGauss<dim> quadrature_formula(fe.degree+1);
   FEValues<dim> fe_values(fe,
-                          QGauss<dim>(fe.degree+1),
+                          quadrature_formula,
                           update_values | update_gradients |
                           update_JxW_values);
-  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+  std::vector<double> u1_q_point(quadrature_formula.size());
+  std::vector<double> u2_q_point(quadrature_formula.size());
+  std::vector<Tensor<1,dim>> grad_u1_q_point(quadrature_formula.size());
+  std::vector<Tensor<1,dim>> grad_u2_q_point(quadrature_formula.size());
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
       cell_convection_u1 = 0.;
       cell_convection_u2 = 0.;
+
       fe_values.reinit(cell);
-      cell->get_dof_indices(local_dof_indices);
+      fe_values.get_function_values(u1, u1_q_point);
+      fe_values.get_function_values(u2, u2_q_point);
+      fe_values.get_function_gradients(u1, grad_u1_q_point);
+      fe_values.get_function_gradients(u2, grad_u2_q_point);
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
         double weight = fe_values.JxW(q_index);
         for (const unsigned int i : fe_values.dof_indices())
-          for (const unsigned int j : fe_values.dof_indices())
-          {
-            double phi_ij_dx = fe_values.shape_value(i, q_index)
-                             * fe_values.shape_value(j, q_index) * weight;
-            for(const unsigned int k : fe_values.dof_indices())
-            {
-              auto grad_phi_k = fe_values.shape_grad(k, q_index);
-              cell_convection_u1(i) += u1[local_dof_indices[j]] * u1[local_dof_indices[k]] * grad_phi_k[0] * phi_ij_dx
-                                     + u2[local_dof_indices[j]] * u1[local_dof_indices[k]] * grad_phi_k[1] * phi_ij_dx;
-              cell_convection_u2(i) += u1[local_dof_indices[j]] * u2[local_dof_indices[k]] * grad_phi_k[0] * phi_ij_dx
-                                     + u2[local_dof_indices[j]] * u2[local_dof_indices[k]] * grad_phi_k[1] * phi_ij_dx;
-            }
-          }
+        {
+          cell_convection_u1(i) += weight * fe_values.shape_value(i, q_index) * 
+                                  ( grad_u1_q_point[q_index][0] * u1_q_point[q_index] + 
+                                    grad_u1_q_point[q_index][1] * u2_q_point[q_index]);
+          cell_convection_u2(i) += weight * fe_values.shape_value(i, q_index) * 
+                                  ( grad_u2_q_point[q_index][0] * u1_q_point[q_index] + 
+                                    grad_u2_q_point[q_index][1] * u2_q_point[q_index]);
+        }
       }
 
       // distribute to global
+      cell->get_dof_indices(local_dof_indices);
       for (const unsigned int i : fe_values.dof_indices())
       {
         convection_u1[local_dof_indices[i]] += cell_convection_u1[i];
