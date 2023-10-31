@@ -1,0 +1,10 @@
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/inse-uppe.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/run.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/debug.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/release.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/runclean.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/distclean.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/strip_comments.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/info.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/edit_cache.dir
+/home/wenchong/Desktop/code/Study/FEM/6-INSE-UPPE/build2/CMakeFiles/rebuild_cache.dir
