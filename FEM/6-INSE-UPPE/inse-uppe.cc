@@ -1,3 +1,16 @@
+//----------------------------------------------------------
+// This code is default for the Sinusoidal test 
+//   (See the section 7.4 of Zhixuan Li's master thesis)
+// Also, the viscous-box test 
+//   (See the section 6.3 of Q. Zhang (2016) ) is supported.
+// See the notes for detail.
+// 
+// Velocity-pressure decomposition method: UPPE
+//   (See the formula (19) of Jianguo Liu (2010) )
+// Time discretization: IMEX-trapezoidal (2nd order)
+// Space discretization: Q2 element (2nd order in H1)
+//----------------------------------------------------------
+
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/function.h>
@@ -42,11 +55,20 @@
 
 using namespace dealii;
 
+// DO NOT Use ADAPTIVE option now!!!
 // #define ADAPTIVE
-#define NO_FORCING_TERM
 
-const double diffusion_coefficient = 5e-5;
+// Add the following code in the viscous-box test.
+// #define NO_FORCING_TERM
 
+// Remove the following code in the viscous-box test.
+#define ANALYTIC_SOLUTION
+
+// Add the following code if you want to see how many CG iterations.
+// #define OUTPUT_CG_IERATIONS
+
+const unsigned Raynolds = 20000;
+const double diffusion_coefficient = 1.0 / Raynolds;
 
 //--------------------------Data Structures for MG--------------------------
 
@@ -92,8 +114,7 @@ struct CopyData
 };
 
 
-//----------------------------Custom Settings------------------------------
-
+//----------------------------Initial values------------------------------
 
 template <int dim>
 class Initial1 : public Function<dim>
@@ -119,7 +140,11 @@ double Initial1<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return sin(M_PI*p[0]) * sin(M_PI*p[0]) * sin(2*M_PI*p[1]);
+  // The following code is for the Sinusoidal test.
+  return M_PI * sin(2*M_PI*p[1]) * pow(sin(M_PI*p[0]), 2);
+
+  // The following code is for the viscous-box test.
+  // return sin(M_PI*p[0]) * sin(M_PI*p[0]) * sin(2*M_PI*p[1]);
 }
 
 
@@ -129,8 +154,14 @@ double Initial2<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return -sin(2*M_PI*p[0]) * sin(M_PI*p[1]) * sin(M_PI*p[1]);
+  // The following code is for the Sinusoidal test.
+  return -M_PI * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2);
+
+  // The following code is for the viscous-box test.
+  // return -sin(2*M_PI*p[0]) * sin(M_PI*p[1]) * sin(M_PI*p[1]);
 }
+
+//-----------------------------Forcing terms--------------------------------
 
 #ifndef NO_FORCING_TERM
 
@@ -158,7 +189,12 @@ double ForcingTerm1<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return 0;
+  return - M_PI * sin(this->get_time()) * pow(sin(M_PI*p[0]), 2) * sin(2*M_PI*p[1])
+         + M_PI*M_PI*M_PI * pow(cos(this->get_time()), 2) * pow(sin(M_PI*p[0]), 2) * sin(2*M_PI*p[0]) * pow(sin(2*M_PI*p[1]), 2)
+         - 2*M_PI*M_PI*M_PI * pow(cos(this->get_time()), 2) * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[0]), 2) * pow(sin(M_PI*p[1]), 2) * cos(2*M_PI*p[1])
+         - 2*diffusion_coefficient*M_PI*M_PI*M_PI * cos(this->get_time()) * cos(2*M_PI*p[0]) * sin(2*M_PI*p[1])
+         + 4*diffusion_coefficient*M_PI*M_PI*M_PI * cos(this->get_time()) * pow(sin(M_PI*p[0]), 2) * sin(2*M_PI*p[1])
+         + M_PI * cos(this->get_time()) * sin(M_PI*p[0]) * sin(M_PI*p[1]);
 }
 
 
@@ -168,7 +204,73 @@ double ForcingTerm2<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return 0;
+  return   M_PI * sin(this->get_time()) * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2)
+         - 2*M_PI*M_PI*M_PI * pow(cos(this->get_time()), 2) * pow(sin(M_PI*p[0]), 2) * cos(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2) * sin(2*M_PI*p[1])
+         + M_PI*M_PI*M_PI * pow(cos(this->get_time()), 2) * pow(sin(2*M_PI*p[0]), 2) * pow(sin(M_PI*p[1]), 2) * sin(2*M_PI*p[1])
+         + 2*diffusion_coefficient*M_PI*M_PI*M_PI * cos(this->get_time()) * sin(2*M_PI*p[0]) * cos(2*M_PI*p[1])
+         - 4*diffusion_coefficient*M_PI*M_PI*M_PI * cos(this->get_time()) * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2)
+         - M_PI * cos(this->get_time()) * cos(M_PI*p[0]) * cos(M_PI*p[1]);
+}
+
+#endif
+
+//-----------------------------Analytic Solutions-----------------------------
+
+#ifdef ANALYTIC_SOLUTION
+
+template <int dim>
+class AnalyticSolutionU1 : public Function<dim>
+{
+public:
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+
+template <int dim>
+class AnalyticSolutionU2 : public Function<dim>
+{
+public:
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+template <int dim>
+class AnalyticSolutionPressure : public Function<dim>
+{
+public:
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+
+template <int dim>
+double AnalyticSolutionU1<dim>::value(const Point<dim> & p,
+                                  const unsigned int component) const
+{
+  (void)component;
+  Assert(component == 0, ExcIndexRange(component, 0, 1));
+  return M_PI * cos(this->get_time()) * sin(2*M_PI*p[1]) * pow(sin(M_PI*p[0]), 2);
+}
+
+
+template <int dim>
+double AnalyticSolutionU2<dim>::value(const Point<dim> & p,
+                                  const unsigned int component) const
+{
+  (void)component;
+  Assert(component == 0, ExcIndexRange(component, 0, 1));
+  return -M_PI * cos(this->get_time()) * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2);
+}
+
+
+template <int dim>
+double AnalyticSolutionPressure<dim>::value(const Point<dim> & p,
+                                  const unsigned int component) const
+{
+  (void)component;
+  Assert(component == 0, ExcIndexRange(component, 0, 1));
+  return -cos(this->get_time()) * cos(M_PI*p[0]) * sin(M_PI*p[1]);
 }
 
 #endif
@@ -195,10 +297,11 @@ private:
   void setup_system();
   void setup_convection(const Vector<double>& u1, const Vector<double>& u2);
   void setup_grad_pressure();
-  void update_pressure(const Vector<double>& u1, const Vector<double>& u2);
+  void update_pressure(const Vector<double>& u1, const Vector<double>& u2, 
+                       const bool is_middle_step = false);
   void solve_time_step(Vector<double>& solution, const bool ispressure = false);
   void compute_vortricity();
-  void output_result();
+  void output_result(const bool force_output = false);
 
   Triangulation<dim> triangulation;
   FE_Q<dim>          fe;
@@ -370,9 +473,9 @@ void INSE<dim>::compute_vortricity()
 
 
 template <int dim>
-void INSE<dim>::output_result()
+void INSE<dim>::output_result(const bool force_output)
 {
-  if(timestep_number % 50) return;
+  if(!force_output && (timestep_number % 50)) return;
   DataOut<dim> data_out;
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution_u1, "solution_u1");
@@ -380,6 +483,59 @@ void INSE<dim>::output_result()
   data_out.add_data_vector(pressure, "pressure");
   compute_vortricity();
   data_out.add_data_vector(vortricity, "vortricity");
+
+#ifdef ANALYTIC_SOLUTION
+  Vector<double> difference_per_cell(triangulation.n_active_cells());
+  AnalyticSolutionU1<dim> u1;
+  u1.set_time(time);
+  VectorTools::integrate_difference(MappingFE<2>(fe),
+                                    dof_handler,
+                                    solution_u1,
+                                    u1,
+                                    difference_per_cell,
+                                    QGauss<dim>(fe.degree + 1),
+                                    VectorTools::L2_norm);
+  double L2_error =
+    VectorTools::compute_global_error(triangulation,
+                                      difference_per_cell,
+                                      VectorTools::L2_norm);
+  data_out.add_data_vector(difference_per_cell, "error_u1");
+  std::cout << "u1 L2-norm error: " << L2_error << std::endl;
+
+  difference_per_cell.reinit(triangulation.n_active_cells());
+  AnalyticSolutionU2<dim> u2;
+  u2.set_time(time);
+  VectorTools::integrate_difference(MappingFE<2>(fe),
+                                    dof_handler,
+                                    solution_u2,
+                                    u2,
+                                    difference_per_cell,
+                                    QGauss<dim>(fe.degree + 1),
+                                    VectorTools::L2_norm);
+  L2_error =
+    VectorTools::compute_global_error(triangulation,
+                                      difference_per_cell,
+                                      VectorTools::L2_norm);
+  data_out.add_data_vector(difference_per_cell, "error_u2");
+  std::cout << "u2 L2-norm error: " << L2_error << std::endl;
+
+  difference_per_cell.reinit(triangulation.n_active_cells());
+  AnalyticSolutionPressure<dim> p;
+  p.set_time(time);
+  VectorTools::integrate_difference(MappingFE<2>(fe),
+                                    dof_handler,
+                                    pressure,
+                                    p,
+                                    difference_per_cell,
+                                    QGauss<dim>(fe.degree + 1),
+                                    VectorTools::L2_norm);
+  L2_error =
+    VectorTools::compute_global_error(triangulation,
+                                      difference_per_cell,
+                                      VectorTools::L2_norm);
+  data_out.add_data_vector(difference_per_cell, "error_p");
+  std::cout << "p L2-norm error: " << L2_error << std::endl;
+#endif
 
   data_out.build_patches();
   std::ofstream output("solution/solution-" + std::to_string(timestep_number) + ".vtu");
@@ -435,8 +591,10 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     solution.add(-mean_value);
   }
 
+#ifdef OUTPUT_CG_IRETARIONS
   std::cout << "   " << solver_control.last_step()
             << " CG iterations." << std::endl;
+#endif
 }
 
 
@@ -610,8 +768,6 @@ void INSE<dim>::assemble_multigrid()
                                 update_values | update_gradients | 
                                   update_JxW_values);
 
-  std::cerr << "start mesh loop" << std::endl;
-
   MeshWorker::mesh_loop(dof_handler.begin_mg(),
                         dof_handler.end_mg(),
                         cell_worker,
@@ -734,7 +890,8 @@ void INSE<dim>::setup_grad_pressure()
 
 template <int dim>
 void INSE<dim>::update_pressure(
-  const Vector<double> &u1, const Vector<double>& u2)
+  const Vector<double> &u1, const Vector<double>& u2,
+  const bool is_middle_step)
 {
   system_matrix_pressure.copy_from(laplace_matrix_pressure);
   system_rhs.reinit(solution_u1.size());
@@ -748,7 +905,7 @@ void INSE<dim>::update_pressure(
   FEValues<dim> fe_values(fe,
                           quadrature_formula,
                           update_values | update_gradients |
-                          update_JxW_values);
+                          update_JxW_values | update_quadrature_points);
   const MappingQ<dim> mapping(fe.degree);
   FEFaceValues<dim> fe_face_values(mapping,
                                    fe,
@@ -764,6 +921,20 @@ void INSE<dim>::update_pressure(
   std::vector<Tensor<1,dim>> grad_u1_face_q_point(quadrature_formula_face.size());
   std::vector<Tensor<1,dim>> grad_u2_face_q_point(quadrature_formula_face.size());
 
+#ifndef NO_FORCING_TERM
+  ForcingTerm1<dim> forcing_u1_t1;
+  ForcingTerm2<dim> forcing_u2_t1;
+  ForcingTerm1<dim> forcing_u1_t2;
+  ForcingTerm2<dim> forcing_u2_t2;
+  forcing_u1_t1.set_time(time);
+  forcing_u2_t1.set_time(time);
+  if(is_middle_step)
+  {
+    forcing_u1_t2.set_time(time-time_step);
+    forcing_u2_t2.set_time(time-time_step);
+  }
+#endif
+
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
       cell_rhs = 0.;
@@ -772,6 +943,7 @@ void INSE<dim>::update_pressure(
       fe_values.get_function_values(u2, u2_q_point);
       fe_values.get_function_gradients(u1, grad_u1_q_point);
       fe_values.get_function_gradients(u2, grad_u2_q_point);
+      auto q_points = fe_values.get_quadrature_points();
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
@@ -785,6 +957,18 @@ void INSE<dim>::update_pressure(
                           + weight * grad[1] * 
                                   ( grad_u2_q_point[q_index][0] * u1_q_point[q_index] + 
                                     grad_u2_q_point[q_index][1] * u2_q_point[q_index]);
+
+#ifndef NO_FORCING_TERM
+          double force_u1 = forcing_u1_t1.value(q_points[q_index]);
+          double force_u2 = forcing_u2_t1.value(q_points[q_index]);
+          if(is_middle_step)
+          {
+            force_u1 = 0.5 * (force_u1 + forcing_u1_t2.value(q_points[q_index]));
+            force_u2 = 0.5 * (force_u2 + forcing_u2_t2.value(q_points[q_index]));
+          }
+          cell_rhs(i)  +=  weight * grad[0] * force_u1
+                        +  weight * grad[1] * force_u2;
+#endif
         }
       }
 
@@ -883,7 +1067,12 @@ start_time_iteration:
 
     time += time_step;
     timestep_number++;
+#ifdef OUTPUT_CG_ITERATIONS
     std::cout << std::endl << "Time step " << timestep_number << " at t=" << time << std::endl;
+#else
+    if(timestep_number % 50 == 0)
+      std::cout << std::endl << "Time step " << timestep_number << " at t=" << time << std::endl;
+#endif
 
     setup_grad_pressure();
 
@@ -945,7 +1134,7 @@ start_time_iteration:
     middle_solution_u2 *= 0.5;
     
     setup_convection(middle_solution_u1, middle_solution_u2);
-    update_pressure(middle_solution_u1, middle_solution_u2);
+    update_pressure(middle_solution_u1, middle_solution_u2, true);
     setup_grad_pressure();
 
     // setup system_matrix
@@ -1032,7 +1221,8 @@ start_time_iteration:
 
   setup_convection(prev_solution_u1, prev_solution_u2);
   update_pressure(prev_solution_u1, prev_solution_u2);
-  output_result();
+  std::cout << std::endl;
+  output_result(true);
 }
 
 
