@@ -42,6 +42,7 @@
 
 using namespace dealii;
 
+// #define ADAPTIVE
 #define NO_FORCING_TERM
 
 const double diffusion_coefficient = 5e-5;
@@ -413,7 +414,7 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     using Smoother = PreconditionChebyshev<SparseMatrix<double>, Vector<double>>;
     mg::SmootherRelaxation<Smoother, Vector<double>> mg_smoother;
     mg_smoother.initialize(mg_matrices);
-    mg_smoother.set_steps(3);
+    mg_smoother.set_steps(2);
     mg_smoother.set_symmetric(true);
 
     mg::Matrix<Vector<double>> mg_matrix(mg_matrices);
@@ -796,10 +797,10 @@ void INSE<dim>::update_pressure(
         for (const unsigned int q_index : fe_face_values.quadrature_point_indices())
         {
           auto normal = fe_face_values.normal_vector(q_index);
-          double weight = fe_values.JxW(q_index);
+          double weight = fe_face_values.JxW(q_index);
           for (const unsigned int i : fe_face_values.dof_indices())
           {
-            auto grad = fe_values.shape_grad(i, q_index);
+            auto grad = fe_face_values.shape_grad(i, q_index);
             double normal_grad_phi = normal[0]*grad[1] - normal[1]*grad[0];
             double vor_u = grad_u2_face_q_point[q_index][0] - grad_u1_face_q_point[q_index][1];
             cell_rhs(i)    += diffusion_coefficient * vor_u * normal_grad_phi * weight;
@@ -865,8 +866,6 @@ start_time_iteration:
 
   Initial1<dim> initial_1;
   Initial2<dim> initial_2;
-  initial_1.set_time(0);
-  initial_2.set_time(0);
   VectorTools::interpolate(dof_handler,
                            initial_1,
                            prev_solution_u1);
