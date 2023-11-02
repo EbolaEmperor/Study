@@ -1,9 +1,5 @@
 //----------------------------------------------------------
-// This code is default for the Sinusoidal test 
-//   (See the section 7.4 of Zhixuan Li's master thesis)
-// Also, the viscous-box test 
-//   (See the section 6.3 of Q. Zhang (2016) ) is supported.
-// See the notes for detail.
+// This code is for cylindrical turbulence test
 // 
 // Velocity-pressure decomposition method: UPPE
 //   (See the formula (19) of Jianguo Liu (2010) )
@@ -59,15 +55,15 @@ using namespace dealii;
 // #define ADAPTIVE
 
 // Add the following code in the viscous-box test.
-// #define NO_FORCING_TERM
+#define NO_FORCING_TERM
 
 // Remove the following code in the viscous-box test.
-#define ANALYTIC_SOLUTION
+// #define ANALYTIC_SOLUTION
 
 // Add the following code if you want to see how many CG iterations.
-// #define OUTPUT_CG_IERATIONS
+#define OUTPUT_CG_ITERATIONS
 
-const unsigned Raynolds = 20000;
+const unsigned Raynolds = 1000;
 const double diffusion_coefficient = 1.0 / Raynolds;
 
 //--------------------------Data Structures for MG--------------------------
@@ -114,121 +110,10 @@ struct CopyData
 };
 
 
-//----------------------------Initial values------------------------------
+//----------------------------Boundary Values----------------------------
 
 template <int dim>
-class Initial1 : public Function<dim>
-{
-public:
-  virtual double value(const Point<dim>  &p,
-                        const unsigned int component = 0) const override;
-};
-
-
-template <int dim>
-class Initial2 : public Function<dim>
-{
-public:
-  virtual double value(const Point<dim>  &p,
-                        const unsigned int component = 0) const override;
-};
-
-
-template <int dim>
-double Initial1<dim>::value(const Point<dim> & p,
-                                  const unsigned int component) const
-{
-  (void)component;
-  Assert(component == 0, ExcIndexRange(component, 0, 1));
-  // The following code is for the Sinusoidal test.
-  return M_PI * sin(2*M_PI*p[1]) * pow(sin(M_PI*p[0]), 2);
-
-  // The following code is for the viscous-box test.
-  // return sin(M_PI*p[0]) * sin(M_PI*p[0]) * sin(2*M_PI*p[1]);
-}
-
-
-template <int dim>
-double Initial2<dim>::value(const Point<dim> & p,
-                                  const unsigned int component) const
-{
-  (void)component;
-  Assert(component == 0, ExcIndexRange(component, 0, 1));
-  // The following code is for the Sinusoidal test.
-  return -M_PI * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2);
-
-  // The following code is for the viscous-box test.
-  // return -sin(2*M_PI*p[0]) * sin(M_PI*p[1]) * sin(M_PI*p[1]);
-}
-
-//-----------------------------Forcing terms--------------------------------
-
-#ifndef NO_FORCING_TERM
-
-template <int dim>
-class ForcingTerm1 : public Function<dim>
-{
-public:
-  virtual double value(const Point<dim>  &p,
-                        const unsigned int component = 0) const override;
-};
-
-
-template <int dim>
-class ForcingTerm2 : public Function<dim>
-{
-public:
-  virtual double value(const Point<dim>  &p,
-                        const unsigned int component = 0) const override;
-};
-
-
-template <int dim>
-double ForcingTerm1<dim>::value(const Point<dim> & p,
-                                  const unsigned int component) const
-{
-  (void)component;
-  Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return - M_PI * sin(this->get_time()) * pow(sin(M_PI*p[0]), 2) * sin(2*M_PI*p[1])
-         + M_PI*M_PI*M_PI * pow(cos(this->get_time()), 2) * pow(sin(M_PI*p[0]), 2) * sin(2*M_PI*p[0]) * pow(sin(2*M_PI*p[1]), 2)
-         - 2*M_PI*M_PI*M_PI * pow(cos(this->get_time()), 2) * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[0]), 2) * pow(sin(M_PI*p[1]), 2) * cos(2*M_PI*p[1])
-         - 2*diffusion_coefficient*M_PI*M_PI*M_PI * cos(this->get_time()) * cos(2*M_PI*p[0]) * sin(2*M_PI*p[1])
-         + 4*diffusion_coefficient*M_PI*M_PI*M_PI * cos(this->get_time()) * pow(sin(M_PI*p[0]), 2) * sin(2*M_PI*p[1])
-         + M_PI * cos(this->get_time()) * sin(M_PI*p[0]) * sin(M_PI*p[1]);
-}
-
-
-template <int dim>
-double ForcingTerm2<dim>::value(const Point<dim> & p,
-                                  const unsigned int component) const
-{
-  (void)component;
-  Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return   M_PI * sin(this->get_time()) * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2)
-         - 2*M_PI*M_PI*M_PI * pow(cos(this->get_time()), 2) * pow(sin(M_PI*p[0]), 2) * cos(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2) * sin(2*M_PI*p[1])
-         + M_PI*M_PI*M_PI * pow(cos(this->get_time()), 2) * pow(sin(2*M_PI*p[0]), 2) * pow(sin(M_PI*p[1]), 2) * sin(2*M_PI*p[1])
-         + 2*diffusion_coefficient*M_PI*M_PI*M_PI * cos(this->get_time()) * sin(2*M_PI*p[0]) * cos(2*M_PI*p[1])
-         - 4*diffusion_coefficient*M_PI*M_PI*M_PI * cos(this->get_time()) * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2)
-         - M_PI * cos(this->get_time()) * cos(M_PI*p[0]) * cos(M_PI*p[1]);
-}
-
-#endif
-
-//-----------------------------Analytic Solutions-----------------------------
-
-#ifdef ANALYTIC_SOLUTION
-
-template <int dim>
-class AnalyticSolutionU1 : public Function<dim>
-{
-public:
-  virtual double value(const Point<dim>  &p,
-                        const unsigned int component = 0) const override;
-};
-
-
-template <int dim>
-class AnalyticSolutionU2 : public Function<dim>
+class InflowBoundaryTerm : public Function<dim>
 {
 public:
   virtual double value(const Point<dim>  &p,
@@ -236,44 +121,33 @@ public:
 };
 
 template <int dim>
-class AnalyticSolutionPressure : public Function<dim>
+double InflowBoundaryTerm<dim>::value(const Point<dim> & p,
+                                  const unsigned int component) const
+{
+  (void)component;
+  static const double Um = 6.0;
+  Assert(component == 0, ExcIndexRange(component, 0, 1));
+  return Um * p[1] * (0.41-p[1]) / (0.41 * 0.41) * sin(M_PI*this->get_time()/8);
+}
+
+
+template <int dim>
+class InflowBoundaryTermDt : public Function<dim>
 {
 public:
   virtual double value(const Point<dim>  &p,
                         const unsigned int component = 0) const override;
 };
 
-
 template <int dim>
-double AnalyticSolutionU1<dim>::value(const Point<dim> & p,
+double InflowBoundaryTermDt<dim>::value(const Point<dim> & p,
                                   const unsigned int component) const
 {
   (void)component;
+  static const double Um = 6.0;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return M_PI * cos(this->get_time()) * sin(2*M_PI*p[1]) * pow(sin(M_PI*p[0]), 2);
+  return Um * p[1] * (0.41-p[1]) / (0.41 * 0.41) * cos(M_PI*this->get_time()/8) * M_PI/8;
 }
-
-
-template <int dim>
-double AnalyticSolutionU2<dim>::value(const Point<dim> & p,
-                                  const unsigned int component) const
-{
-  (void)component;
-  Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return -M_PI * cos(this->get_time()) * sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2);
-}
-
-
-template <int dim>
-double AnalyticSolutionPressure<dim>::value(const Point<dim> & p,
-                                  const unsigned int component) const
-{
-  (void)component;
-  Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return -cos(this->get_time()) * cos(M_PI*p[0]) * sin(M_PI*p[1]);
-}
-
-#endif
 
 
 //---------------------------------Solver Class-----------------------------------
@@ -297,8 +171,8 @@ private:
   void setup_system();
   void setup_convection(const Vector<double>& u1, const Vector<double>& u2);
   void setup_grad_pressure();
-  void update_pressure(const Vector<double>& u1, const Vector<double>& u2, 
-                       const bool is_middle_step = false);
+  void make_constraints_u1(const double &t);
+  void update_pressure(const Vector<double>& u1, const Vector<double>& u2);
   void solve_time_step(Vector<double>& solution, const bool ispressure = false);
   void compute_vortricity();
   void output_result(const bool force_output = false);
@@ -307,7 +181,8 @@ private:
   FE_Q<dim>          fe;
   DoFHandler<dim>    dof_handler;
 
-  AffineConstraints<double> constraints;
+  AffineConstraints<double> constraints_u1;
+  AffineConstraints<double> constraints_u2;
   AffineConstraints<double> constraints_pressure;
 
   SparsityPattern      sparsity_pattern;
@@ -355,17 +230,156 @@ template <int dim>
 INSE<dim>::INSE
   (const int &N, const double &T)
   : triangulation(Triangulation<dim>::limit_level_difference_at_vertices)
-  , fe(2)
+  , fe(1)
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(1. / (1000 * (1<<N)))
+  , time_step(1e-4)
 {}
 
 
 template <int dim>
 void INSE<dim>::make_mesh(){
-  GridGenerator::hyper_cube(triangulation);
+  // GridGenerator::hyper_cube(triangulation);
+
+  // The following code is for cylindrical turbulence
+  SphericalManifold<2> boundary(Point<2>(0.5, 0.2));
+  Triangulation<2> middle, right, tmp;
+
+  GridGenerator::subdivided_hyper_rectangle(
+      right,
+      std::vector<unsigned int>({9U, 2U}),
+      Point<2>(0.7, 0),
+      Point<2>(2.5, 0.41),
+      false);
+
+  GridGenerator::hyper_shell(middle, Point<2>(0.5, 0.2), 0.05, 0.2, 4, true);
+  middle.reset_all_manifolds();
+  for (Triangulation<2>::cell_iterator cell = middle.begin();
+       cell != middle.end(); ++cell)
+    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+    {
+      bool is_inner_rim = true;
+      for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
+      {
+        Point<2> &vertex = cell->face(f)->vertex(v);
+        if (std::abs(vertex.distance(Point<2>(0.5, 0.2)) - 0.05) > 1e-10)
+        {
+          is_inner_rim = false;
+          break;
+        }
+      }
+      if (is_inner_rim)
+        cell->face(f)->set_manifold_id(1);
+    }
+  middle.set_manifold(1, boundary);
+  middle.refine_global(1);
+
+  for (Triangulation<2>::cell_iterator cell = middle.begin();
+       cell != middle.end();
+       ++cell)
+    for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+    {
+      Point<2> &vertex = cell->vertex(v);
+      if (std::abs(vertex[0] - 0.7) < 1e-10 &&
+          std::abs(vertex[1] - 0.2) < 1e-10)
+        vertex = Point<2>(0.7, 0.205);
+      else if (std::abs(vertex[0] - 0.6) < 1e-10 &&
+               std::abs(vertex[1] - 0.3) < 1e-10)
+        vertex = Point<2>(0.7, 0.41);
+      else if (std::abs(vertex[0] - 0.6) < 1e-10 &&
+               std::abs(vertex[1] - 0.1) < 1e-10)
+        vertex = Point<2>(0.7, 0);
+      else if (std::abs(vertex[0] - 0.5) < 1e-10 &&
+               std::abs(vertex[1] - 0.4) < 1e-10)
+        vertex = Point<2>(0.5, 0.41);
+      else if (std::abs(vertex[0] - 0.5) < 1e-10 &&
+               std::abs(vertex[1] - 0.0) < 1e-10)
+        vertex = Point<2>(0.5, 0.0);
+      else if (std::abs(vertex[0] - 0.4) < 1e-10 &&
+               std::abs(vertex[1] - 0.3) < 1e-10)
+        vertex = Point<2>(0.3, 0.41);
+      else if (std::abs(vertex[0] - 0.4) < 1e-10 &&
+               std::abs(vertex[1] - 0.1) < 1e-10)
+        vertex = Point<2>(0.3, 0);
+      else if (std::abs(vertex[0] - 0.3) < 1e-10 &&
+               std::abs(vertex[1] - 0.2) < 1e-10)
+        vertex = Point<2>(0.3, 0.205);
+      else if (std::abs(vertex[0] - 0.57) < 0.01 &&
+               std::abs(vertex[1] - 0.13) < 0.01)
+        vertex = Point<2>(0.6177, 0.0823);
+      else if (std::abs(vertex[0] - 0.57) < 0.01 &&
+               std::abs(vertex[1] - 0.27) < 0.01)
+        vertex = Point<2>(0.6177, 0.3227);
+      else if (std::abs(vertex[0] - 0.43) < 0.01 &&
+               std::abs(vertex[1] - 0.13) < 0.01)
+        vertex = Point<2>(0.3823, 0.0823);
+      else if (std::abs(vertex[0] - 0.43) < 0.01 &&
+               std::abs(vertex[1] - 0.27) < 0.01)
+        vertex = Point<2>(0.3823, 0.3227);
+    }
+
+  GridGenerator::flatten_triangulation(middle, tmp);
+  GridGenerator::merge_triangulations(tmp, right, triangulation);
+
+  triangulation.reset_all_manifolds();
+  for (Triangulation<2>::cell_iterator cell = triangulation.begin();
+       cell != triangulation.end(); ++cell)
+    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+    {
+      bool is_inner_rim = true;
+      for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
+      {
+        Point<2> &vertex = cell->face(f)->vertex(v);
+        if (std::abs(vertex.distance(Point<2>(0.5, 0.2)) - 0.05) > 1e-10)
+        {
+          is_inner_rim = false;
+          break;
+        }
+      }
+      if (is_inner_rim)
+        cell->face(f)->set_manifold_id(1);
+    }
+  triangulation.set_manifold(1, boundary);
+
+  triangulation.refine_global(level);
+
+  for (Triangulation<2>::active_cell_iterator cell = triangulation.begin();
+       cell != triangulation.end();
+       ++cell)
+  {
+    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+      if (cell->face(f)->at_boundary())
+      {
+        if (std::abs(cell->face(f)->center()[0] - 2.5) < 1e-10)
+          cell->face(f)->set_all_boundary_ids(4);
+        else if (std::abs(cell->face(f)->center()[0] - 0.3) < 1e-10)
+          cell->face(f)->set_all_boundary_ids(2);
+        else if (std::abs(cell->face(f)->center()[1] - 0.41) < 1e-10)
+          cell->face(f)->set_all_boundary_ids(3);
+        else if (std::abs(cell->face(f)->center()[1]) < 1e-10)
+          cell->face(f)->set_all_boundary_ids(3);
+        else cell->face(f)->set_all_boundary_ids(1);
+      }
+  }
+
+  // Refine the grid near the tail.
+  // DONNOT use it until working out with the multigrid hanging nodes problem.
+  //
+  // for (Triangulation<2>::active_cell_iterator cell = triangulation.begin();
+  //      cell != triangulation.end();
+  //      ++cell)
+  // {
+  //   bool is_tail = true;
+  //   for (unsigned int f = 0; f < GeometryInfo<2>::vertices_per_cell; ++f)
+  //     if(cell->vertex(f)[0] < 2.3) is_tail = false;
+  //   if(is_tail)
+  //     cell->set_refine_flag();
+  // }
+  // triangulation.prepare_coarsening_and_refinement();
+  // triangulation.execute_coarsening_and_refinement();
+
+  std::cerr << "make_mesh done. cell: " << triangulation.n_active_cells() << std::endl;
 }
 
 
@@ -424,8 +438,10 @@ void INSE<dim>::refine_mesh(const unsigned &min_level, const unsigned &max_level
   solution_trans_u2.interpolate(previous_solution_u2, solution_u2);
   solution_trans_pressure.interpolate(previous_solution_pressure, pressure);
 
-  constraints.distribute(solution_u1);
-  constraints.distribute(solution_u2);
+  make_constraints_u1(time);
+
+  constraints_u1.distribute(solution_u1);
+  constraints_u2.distribute(solution_u2);
   constraints_pressure.distribute(pressure);
 }
 
@@ -546,7 +562,7 @@ void INSE<dim>::output_result(const bool force_output)
 template <int dim>
 void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
 {
-  SolverControl            solver_control(2000, 1e-10);
+  SolverControl            solver_control(2000, 1e-12);
   SolverCG<Vector<double>> solver(solver_control);
 
   if(!ispressure)
@@ -558,7 +574,7 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     MGTransferPrebuilt<Vector<double>> mg_transfer(mg_constrained_dofs);
     mg_transfer.build(dof_handler);
 
-    SolverControl coarse_solver_control(1000, 1e-10, false, false);
+    SolverControl coarse_solver_control(5000, 1e-12, false, false);
     SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
     PreconditionIdentity id;
     MGCoarseGridIterativeSolver<Vector<double>,
@@ -566,6 +582,11 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
                                 SparseMatrix<double>,
                                 PreconditionIdentity>
         coarse_grid_solver(coarse_solver, mg_matrices[0], id);
+
+    // FullMatrix<double> coarse_matrix;
+    // coarse_matrix.copy_from(mg_matrices[0]);
+    // MGCoarseGridHouseholder<double, Vector<double>> coarse_grid_solver;
+    // coarse_grid_solver.initialize(coarse_matrix);
 
     using Smoother = PreconditionChebyshev<SparseMatrix<double>, Vector<double>>;
     mg::SmootherRelaxation<Smoother, Vector<double>> mg_smoother;
@@ -591,10 +612,36 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     solution.add(-mean_value);
   }
 
-#ifdef OUTPUT_CG_IRETARIONS
+#ifdef OUTPUT_CG_ITERATIONS
   std::cout << "   " << solver_control.last_step()
             << " CG iterations." << std::endl;
 #endif
+}
+
+template <int dim>
+void INSE<dim>::make_constraints_u1(const double &t)
+{
+  constraints_u1.clear();
+  DoFTools::make_hanging_node_constraints(dof_handler, constraints_u1);
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                           1,
+                                           Functions::ZeroFunction<dim>(),
+                                           constraints_u1);
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                           3,
+                                           Functions::ZeroFunction<dim>(),
+                                           constraints_u1);
+  InflowBoundaryTerm<dim> boundary;
+  boundary.set_time(t);
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                           2,
+                                           boundary,
+                                           constraints_u1);
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                           4,
+                                           boundary,
+                                           constraints_u1);
+  constraints_u1.close();
 }
 
 
@@ -610,13 +657,33 @@ void INSE<dim>::setup_system()
             << "Number of degrees of freedom: " << dof_handler.n_dofs()
             << std::endl
             << std::endl;
-  constraints.clear();
-  DoFTools::make_hanging_node_constraints(dof_handler, constraints);
+
+  make_constraints_u1(time);
+
+  constraints_u2.clear();
+  DoFTools::make_hanging_node_constraints(dof_handler, constraints_u2);
+  auto gg = DoFTools::extract_hanging_node_dofs(dof_handler);
+  for(auto x : gg)
+    std::cerr << x << " ";
+  std::cerr << std::endl;
+  
   VectorTools::interpolate_boundary_values(dof_handler,
-                                           0,
+                                           1,
                                            Functions::ZeroFunction<dim>(),
-                                           constraints);
-  constraints.close();
+                                           constraints_u2);
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                           2,
+                                           Functions::ZeroFunction<dim>(),
+                                           constraints_u2);
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                           3,
+                                           Functions::ZeroFunction<dim>(),
+                                           constraints_u2);
+  VectorTools::interpolate_boundary_values(dof_handler,
+                                           4,
+                                           Functions::ZeroFunction<dim>(),
+                                           constraints_u2);
+  constraints_u2.close();
 
   constraints_pressure.clear();
   DoFTools::make_hanging_node_constraints(dof_handler, constraints_pressure);
@@ -624,7 +691,7 @@ void INSE<dim>::setup_system()
 
   {
     DynamicSparsityPattern dsp(dof_handler.n_dofs());
-    DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints);
+    DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints_u1);
     sparsity_pattern.copy_from(dsp);
   }
   {
@@ -734,6 +801,13 @@ void INSE<dim>::assemble_multigrid()
         mg_constrained_dofs.get_refinement_edge_indices(level));
       boundary_constraints[level].close();
     }
+
+  std::cerr << "multigrid hangings" << std::endl;
+  auto vvv = mg_constrained_dofs.get_refinement_edge_indices(n_levels-1);
+  for(auto x : vvv)
+    std::cerr << x << " ";
+  std::cerr << std::endl;
+  std::cerr << "---------------" << std::endl;
 
   auto cell_worker = 
    [&] (const typename DoFHandler<dim>::level_cell_iterator  &cell,
@@ -890,8 +964,7 @@ void INSE<dim>::setup_grad_pressure()
 
 template <int dim>
 void INSE<dim>::update_pressure(
-  const Vector<double> &u1, const Vector<double>& u2,
-  const bool is_middle_step)
+  const Vector<double> &u1, const Vector<double>& u2)
 {
   system_matrix_pressure.copy_from(laplace_matrix_pressure);
   system_rhs.reinit(solution_u1.size());
@@ -911,7 +984,8 @@ void INSE<dim>::update_pressure(
                                    fe,
                                    quadrature_formula_face,
                                    update_values | update_gradients |
-                                   update_JxW_values | update_normal_vectors);
+                                   update_JxW_values | update_normal_vectors
+                                    | update_quadrature_points);
 
   std::vector<double> u1_q_point(quadrature_formula.size());
   std::vector<double> u2_q_point(quadrature_formula.size());
@@ -924,16 +998,12 @@ void INSE<dim>::update_pressure(
 #ifndef NO_FORCING_TERM
   ForcingTerm1<dim> forcing_u1_t1;
   ForcingTerm2<dim> forcing_u2_t1;
-  ForcingTerm1<dim> forcing_u1_t2;
-  ForcingTerm2<dim> forcing_u2_t2;
   forcing_u1_t1.set_time(time);
   forcing_u2_t1.set_time(time);
-  if(is_middle_step)
-  {
-    forcing_u1_t2.set_time(time-time_step);
-    forcing_u2_t2.set_time(time-time_step);
-  }
 #endif
+
+  InflowBoundaryTermDt<dim> boundary_dt;
+  boundary_dt.set_time(time);
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
@@ -961,11 +1031,6 @@ void INSE<dim>::update_pressure(
 #ifndef NO_FORCING_TERM
           double force_u1 = forcing_u1_t1.value(q_points[q_index]);
           double force_u2 = forcing_u2_t1.value(q_points[q_index]);
-          if(is_middle_step)
-          {
-            force_u1 = 0.5 * (force_u1 + forcing_u1_t2.value(q_points[q_index]));
-            force_u2 = 0.5 * (force_u2 + forcing_u2_t2.value(q_points[q_index]));
-          }
           cell_rhs(i)  +=  weight * grad[0] * force_u1
                         +  weight * grad[1] * force_u2;
 #endif
@@ -977,17 +1042,25 @@ void INSE<dim>::update_pressure(
         fe_face_values.reinit(cell, f);
         fe_face_values.get_function_gradients(u1, grad_u1_face_q_point);
         fe_face_values.get_function_gradients(u2, grad_u2_face_q_point);
+        auto q_face_points = fe_face_values.get_quadrature_points();
         
         for (const unsigned int q_index : fe_face_values.quadrature_point_indices())
         {
           auto normal = fe_face_values.normal_vector(q_index);
+          // if(fabs(normal[0])>1e-6 && fabs(normal[1])>1e-6)
+          //   std::cout << q_face_points[q_index] << " " << normal << std::endl;
           double weight = fe_face_values.JxW(q_index);
+
+          auto gdt = boundary_dt.value(q_face_points[q_index]);
+          if(f->boundary_id() != 2 && f->boundary_id() != 4) gdt = 0;
+
           for (const unsigned int i : fe_face_values.dof_indices())
           {
             auto grad = fe_face_values.shape_grad(i, q_index);
             double normal_grad_phi = normal[0]*grad[1] - normal[1]*grad[0];
             double vor_u = grad_u2_face_q_point[q_index][0] - grad_u1_face_q_point[q_index][1];
-            cell_rhs(i)    += diffusion_coefficient * vor_u * normal_grad_phi * weight;
+            cell_rhs(i)    += diffusion_coefficient * vor_u * normal_grad_phi * weight
+                            - normal[0] * gdt * fe_face_values.shape_value(i,q_index) * weight;
           }
         }
       }
@@ -995,9 +1068,7 @@ void INSE<dim>::update_pressure(
       // distribute to global
       cell->get_dof_indices(local_dof_indices);
       for (const unsigned int i : fe_values.dof_indices())
-      {
         system_rhs[local_dof_indices[i]] += cell_rhs(i);
-      }
     }
   
   constraints_pressure.condense(system_matrix_pressure, system_rhs);
@@ -1013,7 +1084,7 @@ void INSE<dim>::run(){
   const unsigned initial_global_refinement = 1 + level;
   const unsigned n_adaptive_pre_refinement_steps = 4;
 #else
-  const unsigned initial_global_refinement = 5 + level;
+  const unsigned initial_global_refinement = 0;
 #endif
 
   Vector<double> tmp;
@@ -1021,6 +1092,11 @@ void INSE<dim>::run(){
   Vector<double> middle_solution_u2;
   Vector<double> forcing_term_1;
   Vector<double> forcing_term_2;
+
+  Vector<double> grad_pressure_u1_stage1;
+  Vector<double> grad_pressure_u2_stage1;
+  Vector<double> convection_u1_stage1;
+  Vector<double> convection_u2_stage1;
 
 #ifdef ADAPTIVE
   unsigned pre_refinement_step = 0;
@@ -1048,8 +1124,10 @@ start_time_iteration:
   ForcingTerm2<dim> rhs_func_2;
 #endif
 
-  Initial1<dim> initial_1;
-  Initial2<dim> initial_2;
+  Functions::ZeroFunction<dim> initial_1;
+  // InflowBoundaryTerm<dim> initial_1;
+  Functions::ZeroFunction<dim> initial_2;
+  
   VectorTools::interpolate(dof_handler,
                            initial_1,
                            prev_solution_u1);
@@ -1060,13 +1138,14 @@ start_time_iteration:
   solution_u2 = prev_solution_u2;
 
   while(time <= end_time){
-    //------------------------------first stage-------------------------------------
+    // ------------------------------first stage-------------------------------------
     setup_convection(prev_solution_u1, prev_solution_u2);
     update_pressure(prev_solution_u1, prev_solution_u2);
     output_result();
 
     time += time_step;
     timestep_number++;
+    make_constraints_u1(time);
 #ifdef OUTPUT_CG_ITERATIONS
     std::cout << std::endl << "Time step " << timestep_number << " at t=" << time << std::endl;
 #else
@@ -1096,9 +1175,9 @@ start_time_iteration:
     system_rhs.add(time_step, forcing_term_1);
 #endif
 
-    constraints.condense(system_matrix, system_rhs);
+    constraints_u1.condense(system_matrix, system_rhs);
     solve_time_step(middle_solution_u1);
-    constraints.distribute(middle_solution_u1);
+    constraints_u1.distribute(middle_solution_u1);
 
     // setup system_matrix
     system_matrix.copy_from(mass_matrix);
@@ -1120,21 +1199,20 @@ start_time_iteration:
     system_rhs.add(time_step, forcing_term_2);
 #endif
     
-    constraints.condense(system_matrix, system_rhs);
+    constraints_u2.condense(system_matrix, system_rhs);
     solve_time_step(middle_solution_u2);
-    constraints.distribute(middle_solution_u2);
+    constraints_u2.distribute(middle_solution_u2);
 
 
     //------------------------------second stage-------------------------------------
 
-    // compute u** = u_prev + u*
-    middle_solution_u1 += prev_solution_u1;
-    middle_solution_u2 += prev_solution_u2;
-    middle_solution_u1 *= 0.5;
-    middle_solution_u2 *= 0.5;
-    
+    convection_u1_stage1 = convection_u1;
+    convection_u2_stage1 = convection_u2;
+    grad_pressure_u1_stage1 = grad_pressure_u1;
+    grad_pressure_u2_stage1 = grad_pressure_u2;
+
     setup_convection(middle_solution_u1, middle_solution_u2);
-    update_pressure(middle_solution_u1, middle_solution_u2, true);
+    update_pressure(middle_solution_u1, middle_solution_u2);
     setup_grad_pressure();
 
     // setup system_matrix
@@ -1142,10 +1220,14 @@ start_time_iteration:
 
     // setup right side term
     mass_matrix.vmult(system_rhs, prev_solution_u1);
+    laplace_matrix.vmult(tmp, prev_solution_u1);
+    system_rhs.add(-0.5*time_step, tmp);
     laplace_matrix.vmult(tmp, middle_solution_u1);
-    system_rhs.add(-time_step, tmp);
-    system_rhs.add(-time_step, convection_u1);
-    system_rhs.add(-time_step, grad_pressure_u1);
+    system_rhs.add(-0.5*time_step, tmp);
+    system_rhs.add(-0.5*time_step, convection_u1);
+    system_rhs.add(-0.5*time_step, convection_u1_stage1);
+    system_rhs.add(-0.5*time_step, grad_pressure_u1);
+    system_rhs.add(-0.5*time_step, grad_pressure_u1_stage1);
 
 #ifndef NO_FORCING_TERM
     rhs_func_1.set_time(time);
@@ -1157,9 +1239,9 @@ start_time_iteration:
     system_rhs.add(0.5*time_step, tmp);
 #endif
 
-    constraints.condense(system_matrix, system_rhs);
+    constraints_u1.condense(system_matrix, system_rhs);
     solve_time_step(solution_u1);
-    constraints.distribute(solution_u1);
+    constraints_u1.distribute(solution_u1);
 
     // setup system_matrix
     system_matrix.copy_from(mass_matrix);
@@ -1167,9 +1249,13 @@ start_time_iteration:
     // setup right side term
     mass_matrix.vmult(system_rhs, prev_solution_u2);
     laplace_matrix.vmult(tmp, middle_solution_u2);
-    system_rhs.add(-time_step, tmp);
-    system_rhs.add(-time_step, convection_u2);
-    system_rhs.add(-time_step, grad_pressure_u2);
+    system_rhs.add(-0.5*time_step, tmp);
+    laplace_matrix.vmult(tmp, prev_solution_u2);
+    system_rhs.add(-0.5*time_step, tmp);
+    system_rhs.add(-0.5*time_step, convection_u2);
+    system_rhs.add(-0.5*time_step, convection_u2_stage1);
+    system_rhs.add(-0.5*time_step, grad_pressure_u2);
+    system_rhs.add(-0.5*time_step, grad_pressure_u2_stage1);
 
 #ifndef NO_FORCING_TERM
     rhs_func_2.set_time(time);
@@ -1181,9 +1267,9 @@ start_time_iteration:
     system_rhs.add(0.5*time_step, tmp);
 #endif
 
-    constraints.condense(system_matrix, system_rhs);
+    constraints_u2.condense(system_matrix, system_rhs);
     solve_time_step(solution_u2);
-    constraints.distribute(solution_u2);
+    constraints_u2.distribute(solution_u2);
 
 #ifdef ADAPTIVE
     // Refine mesh 1 times per 5 time-step. At the begining, refine 5 times.
@@ -1207,6 +1293,10 @@ start_time_iteration:
         tmp.reinit(solution_u1.size());
         middle_solution_u1.reinit(solution_u1.size());
         middle_solution_u2.reinit(solution_u1.size());
+        convection_u1_stage1.reinit(solution_u1.size());
+        convection_u2_stage1.reinit(solution_u1.size());
+        grad_pressure_u1_stage1.reinit(solution_u1.size());
+        grad_pressure_u2_stage1.reinit(solution_u1.size());
 
 #ifndef NO_FORCING_TERM
         forcing_term_1.reinit(solution_u1.size());
