@@ -230,11 +230,11 @@ template <int dim>
 INSE<dim>::INSE
   (const int &N, const double &T)
   : triangulation(Triangulation<dim>::limit_level_difference_at_vertices)
-  , fe(1)
+  , fe(2)
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(1e-4)
+  , time_step(4e-4)
 {}
 
 
@@ -1047,8 +1047,6 @@ void INSE<dim>::update_pressure(
         for (const unsigned int q_index : fe_face_values.quadrature_point_indices())
         {
           auto normal = fe_face_values.normal_vector(q_index);
-          // if(fabs(normal[0])>1e-6 && fabs(normal[1])>1e-6)
-          //   std::cout << q_face_points[q_index] << " " << normal << std::endl;
           double weight = fe_face_values.JxW(q_index);
 
           auto gdt = boundary_dt.value(q_face_points[q_index]);
