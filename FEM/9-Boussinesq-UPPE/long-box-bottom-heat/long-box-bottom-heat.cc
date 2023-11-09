@@ -248,7 +248,7 @@ Boussinesq<dim>::Boussinesq
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(1e-3)
+  , time_step(1e-2)
 {}
 
 
@@ -324,7 +324,7 @@ void Boussinesq<dim>::compute_vortricity()
 template <int dim>
 void Boussinesq<dim>::output_result(const bool force_output)
 {
-  if(!force_output && (timestep_number % 20)) return;
+  if(!force_output && (timestep_number % 50)) return;
   DataOut<dim> data_out;
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution_u1, "solution_u1");
@@ -396,13 +396,13 @@ void Boussinesq<dim>::solve_pressure(Vector<double>& solution)
 {
   constraints_pressure.condense(system_matrix_pressure, 
                                    system_rhs);
-  SolverControl            solver_control(2000, 1e-12);
+  SolverControl            solver_control(2000, 1e-8);
   SolverCG<Vector<double>> solver(solver_control);
 
   MGTransferPrebuilt<Vector<double>> mg_transfer(mg_constrained_dofs);
   mg_transfer.build(dof_handler);
 
-  SolverControl coarse_solver_control(5000, 1e-12, false, false);
+  SolverControl coarse_solver_control(5000, 1e-9, false, false);
   SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
   PreconditionIdentity id;
   MGCoarseGridIterativeSolver<Vector<double>,
@@ -1083,7 +1083,7 @@ void Boussinesq<dim>::run(){
 
     solve_velocity(solution_u2);
 
-    // update T*
+    // update next T
     system_matrix_temperature.copy_from(mass_matrix_temperature);
 
     mass_matrix_temperature.vmult(system_rhs, prev_temperature);
@@ -1094,7 +1094,7 @@ void Boussinesq<dim>::run(){
     system_rhs.add(-0.5*time_step, tmp);
        // L_pre + L*
     system_rhs.add(0.5*time_step, L_T_stage1);
-    setup_u_grad_T(prev_solution_u1, prev_solution_u2, prev_temperature);
+    setup_u_grad_T(middle_solution_u1, middle_solution_u2, middle_temperature);
     system_rhs.add(-0.5*time_step, u_grad_temperature);
 
     make_constraints_temperature(time);
