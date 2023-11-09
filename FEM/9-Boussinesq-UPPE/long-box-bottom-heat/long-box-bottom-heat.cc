@@ -1,5 +1,5 @@
 //----------------------------------------------------------
-// This code is for cylindrical turbulence test
+// This code is for long-box bottom-heat test
 // 
 // Velocity-pressure decomposition method: UPPE
 //   (See the formula (19) of Jianguo Liu (2010) )
