@@ -249,7 +249,7 @@ Boussinesq<dim>::Boussinesq
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(2e-3)
+  , time_step(5e-4)
 {}
 
 
