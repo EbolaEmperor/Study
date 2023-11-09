@@ -26,6 +26,7 @@
 #include <deal.II/grid/manifold_lib.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
+#include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/mapping_fe.h>
@@ -254,29 +255,180 @@ Boussinesq<dim>::Boussinesq
 
 template <int dim>
 void Boussinesq<dim>::make_mesh(){
-  std::vector<unsigned> subdivisions(dim, 1);
-  subdivisions[1] = 8;
+  SphericalManifold<2> boundary(Point<2>(0.5, 0.5));
+  SphericalManifold<2> boundary2(Point<2>(1.5, 1.5));
+  Triangulation<2> left_bottom, right_bottom, left_top, right_top;
+  Triangulation<2> tmp1, tmp2, tmp3, tmp4;
 
-  GridGenerator::subdivided_hyper_rectangle(triangulation,
-                                            subdivisions,
-                                            Point<dim>(0., 0.),
-                                            Point<dim>(1., 8.));
+  GridGenerator::hyper_shell(left_bottom, Point<2>(0.5, 0.5), 0.1, 0.5, 4, true);
+  left_bottom.reset_all_manifolds();
+  for (Triangulation<2>::cell_iterator cell = left_bottom.begin();
+       cell != left_bottom.end(); ++cell)
+    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+    {
+      bool is_inner_rim = true;
+      for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
+      {
+        Point<2> &vertex = cell->face(f)->vertex(v);
+        if (std::abs(vertex.distance(Point<2>(0.5, 0.5)) - 0.1) > 1e-10)
+        {
+          is_inner_rim = false;
+          break;
+        }
+      }
+      if (is_inner_rim)
+        cell->face(f)->set_manifold_id(1);
+    }
+  left_bottom.set_manifold(1, boundary);
+  left_bottom.refine_global(1);
+
+  GridGenerator::hyper_shell(right_top, Point<2>(1.5, 1.5), 0.1, 0.5, 4, true);
+  right_top.reset_all_manifolds();
+  for (Triangulation<2>::cell_iterator cell = right_top.begin();
+       cell != right_top.end(); ++cell)
+    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+    {
+      bool is_inner_rim = true;
+      for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
+      {
+        Point<2> &vertex = cell->face(f)->vertex(v);
+        if (std::abs(vertex.distance(Point<2>(1.5, 1.5)) - 0.1) > 1e-10)
+        {
+          is_inner_rim = false;
+          break;
+        }
+      }
+      if (is_inner_rim)
+        cell->face(f)->set_manifold_id(1);
+    }
+  right_top.set_manifold(1, boundary2);
+  right_top.refine_global(1);
+
+  GridGenerator::subdivided_hyper_rectangle(
+      right_bottom,
+      std::vector<unsigned int>({2U, 2U}),
+      Point<2>(1.0, 0),
+      Point<2>(2.0, 1.0),
+      false);
+
+  GridGenerator::subdivided_hyper_rectangle(
+      left_top,
+      std::vector<unsigned int>({2U, 2U}),
+      Point<2>(0, 1.0),
+      Point<2>(1.0, 2.0),
+      false);
+  
+  for (Triangulation<2>::cell_iterator cell = left_bottom.begin();
+       cell != left_bottom.end();
+       ++cell)
+    for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+    {
+      Point<2> &vertex = cell->vertex(v);
+      if (std::abs(vertex[0] - 0.25) < 0.01 &&
+          std::abs(vertex[1] - 0.75) < 0.01)
+        vertex = Point<2>(0, 1.0);
+      else if (std::abs(vertex[0] - 0.75) < 0.01 &&
+               std::abs(vertex[1] - 0.75) < 0.01)
+        vertex = Point<2>(1.0, 1.0);
+      else if (std::abs(vertex[0] - 0.25) < 0.01 &&
+               std::abs(vertex[1] - 0.25) < 0.01)
+        vertex = Point<2>(0, 0);
+      else if (std::abs(vertex[0] - 0.75) < 0.01 &&
+               std::abs(vertex[1] - 0.25) < 0.01)
+        vertex = Point<2>(1.0, 0);
+      else if (std::abs(vertex[0] - 0.66) < 0.01 &&
+               std::abs(vertex[1] - 0.66) < 0.01)
+        vertex = Point<2>(0.8, 0.8);
+      else if (std::abs(vertex[0] - 0.66) < 0.01 &&
+               std::abs(vertex[1] - 0.34) < 0.01)
+        vertex = Point<2>(0.8, 0.2);
+      else if (std::abs(vertex[0] - 0.34) < 0.01 &&
+               std::abs(vertex[1] - 0.66) < 0.01)
+        vertex = Point<2>(0.2, 0.8);
+      else if (std::abs(vertex[0] - 0.34) < 0.01 &&
+               std::abs(vertex[1] - 0.34) < 0.01)
+        vertex = Point<2>(0.2, 0.2);
+    }
+
+  for (Triangulation<2>::cell_iterator cell = right_top.begin();
+       cell != right_top.end();
+       ++cell)
+    for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
+    {
+      Point<2> &vertex = cell->vertex(v);
+      if (std::abs(vertex[0] - 1.25) < 0.01 &&
+          std::abs(vertex[1] - 1.75) < 0.01)
+        vertex = Point<2>(1.0, 2.0);
+      else if (std::abs(vertex[0] - 1.75) < 0.01 &&
+               std::abs(vertex[1] - 1.75) < 0.01)
+        vertex = Point<2>(2.0, 2.0);
+      else if (std::abs(vertex[0] - 1.25) < 0.01 &&
+               std::abs(vertex[1] - 1.25) < 0.01)
+        vertex = Point<2>(1.0, 1.0);
+      else if (std::abs(vertex[0] - 1.75) < 0.01 &&
+               std::abs(vertex[1] - 1.25) < 0.01)
+        vertex = Point<2>(2.0, 1.0);
+      else if (std::abs(vertex[0] - 1.66) < 0.01 &&
+               std::abs(vertex[1] - 1.66) < 0.01)
+        vertex = Point<2>(1.8, 1.8);
+      else if (std::abs(vertex[0] - 1.66) < 0.01 &&
+               std::abs(vertex[1] - 1.34) < 0.01)
+        vertex = Point<2>(1.8, 1.2);
+      else if (std::abs(vertex[0] - 1.34) < 0.01 &&
+               std::abs(vertex[1] - 1.66) < 0.01)
+        vertex = Point<2>(1.2, 1.8);
+      else if (std::abs(vertex[0] - 1.34) < 0.01 &&
+               std::abs(vertex[1] - 1.34) < 0.01)
+        vertex = Point<2>(1.2, 1.2);
+    }
+
+  GridGenerator::flatten_triangulation(left_bottom, tmp1);
+  GridGenerator::flatten_triangulation(right_top, tmp2);
+  GridGenerator::merge_triangulations(tmp1, left_top, tmp3);
+  GridGenerator::merge_triangulations(tmp3, right_bottom, tmp4);
+  GridGenerator::merge_triangulations(tmp4, tmp2, triangulation);
+
+  triangulation.reset_all_manifolds();
+  for (Triangulation<2>::cell_iterator cell = triangulation.begin();
+       cell != triangulation.end(); ++cell)
+    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+    {
+      bool is_inner_rim = true;
+      bool is_inner_rim2 = true;
+      for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
+      {
+        Point<2> &vertex = cell->face(f)->vertex(v);
+        if (std::abs(vertex.distance(Point<2>(0.5, 0.5)) - 0.1) > 1e-10)
+          is_inner_rim = false;
+        if (std::abs(vertex.distance(Point<2>(1.5, 1.5)) - 0.1) > 1e-10)
+          is_inner_rim2 = false;
+      }
+      if (is_inner_rim)
+        cell->face(f)->set_manifold_id(1);
+      if (is_inner_rim2)
+        cell->face(f)->set_manifold_id(2);
+    }
+  triangulation.set_manifold(1, boundary);
+  triangulation.set_manifold(2, boundary2);
 
   triangulation.refine_global(level);
 
-  // Boundary: 0-insulated, 1-hot, 2-cold
-  for(const auto& cell : triangulation.active_cell_iterators())
-    for(const auto& face : cell->face_iterators())
-      if (face->at_boundary())
+  for (Triangulation<2>::active_cell_iterator cell = triangulation.begin();
+       cell != triangulation.end();
+       ++cell)
+  {
+    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+      if (cell->face(f)->at_boundary())
       {
-        if (std::abs(face->center()[0]) < 1e-10)
-          face->set_all_boundary_ids(1);
-        else if (std::abs(face->center()[0] - 1.0) < 1e-10)
-          face->set_all_boundary_ids(2);
+        if (cell->face(f)->manifold_id() == 1)
+          cell->face(f)->set_all_boundary_ids(1);
+        else if (cell->face(f)->manifold_id() == 2)
+          cell->face(f)->set_all_boundary_ids(2);
         else
-          face->set_all_boundary_ids(0);
+          cell->face(f)->set_all_boundary_ids(0);
       }
-  std::cerr << "make-mesh done. cell: " << triangulation.n_active_cells() << std::endl;
+  }
+  std::cerr << "make_mesh done. cell: " << triangulation.n_active_cells() << std::endl;
 }
 
 template <int dim>
@@ -495,6 +647,7 @@ template <int dim>
 void Boussinesq<dim>::setup_system()
 {
   dof_handler.distribute_dofs(fe);
+  DoFRenumbering::Cuthill_McKee(dof_handler);
 
   std::cout << std::endl
             << "===========================================" << std::endl
