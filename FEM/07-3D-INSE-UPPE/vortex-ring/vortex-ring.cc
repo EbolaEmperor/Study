@@ -99,6 +99,75 @@ struct CopyData
 };
 
 
+//-----------------------------Initial Values----------------------------
+
+
+template <int dim>
+class InitialTermU2 : public Function<dim>
+{
+public:
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+template <int dim>
+double InitialTermU2<dim>::value(const Point<dim> & p,
+                                  const unsigned int component) const
+{
+  (void)component;
+  Assert(component == 0, ExcIndexRange(component, 0, 1));
+  static const double V = 5.0;
+  static Point<3> center(0.2, 0.5, 0.5);
+  static double outerR = 0.3;
+  static double innerR = 0.1;
+
+  if(p[0] <= center[0]-innerR || p[0] >= center[0]+innerR) return 0;
+  auto dp = p - center;
+  double dx = dp[0];
+  double A = sqrt(dp[1]*dp[1]+dp[2]*dp[2]);
+  if(A <= outerR-innerR || A >= outerR+innerR) return 0;
+  double theta = acos(dp[1] / A);
+  if(dp[2] < 0) theta = 2*M_PI - theta;
+  double B = fabs(outerR - A);
+  double D = sqrt(dx*dx + B*B);
+  if(D > innerR) return 0;
+  return - V * sin(theta) * pow(1.0 - D/innerR, 2.0);
+}
+
+
+template <int dim>
+class InitialTermU3 : public Function<dim>
+{
+public:
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+template <int dim>
+double InitialTermU3<dim>::value(const Point<dim> & p,
+                                  const unsigned int component) const
+{
+  (void)component;
+  Assert(component == 0, ExcIndexRange(component, 0, 1));
+  static const double V = 5.0;
+  static Point<3> center(0.2, 0.5, 0.5);
+  static double outerR = 0.3;
+  static double innerR = 0.1;
+
+  if(p[0] <= center[0]-innerR || p[0] >= center[0]+innerR) return 0;
+  auto dp = p - center;
+  double dx = dp[0];
+  double A = sqrt(dp[1]*dp[1]+dp[2]*dp[2]);
+  if(A <= outerR-innerR || A >= outerR+innerR) return 0;
+  double theta = acos(dp[1] / A);
+  if(dp[2] < 0) theta = 2*M_PI - theta;
+  double B = fabs(outerR - A);
+  double D = sqrt(dx*dx + B*B);
+  if(D > innerR) return 0;
+  return V * cos(theta) * pow(1.0 - D/innerR, 2.0);
+}
+
+
 //----------------------------Boundary Values----------------------------
 
 template <int dim>
@@ -648,20 +717,26 @@ void INSE<dim>::setup_convection
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
         double weight = fe_values.JxW(q_index);
+
+        Tensor<1,dim> ugu;
+
+        ugu[0] =   grad_u1_q_point[q_index][0] * u1_q_point[q_index]
+                 + grad_u1_q_point[q_index][1] * u2_q_point[q_index]
+                 + grad_u1_q_point[q_index][2] * u3_q_point[q_index];
+
+        ugu[1] =   grad_u2_q_point[q_index][0] * u1_q_point[q_index]
+                 + grad_u2_q_point[q_index][1] * u2_q_point[q_index]
+                 + grad_u2_q_point[q_index][2] * u3_q_point[q_index];
+
+        ugu[2] =   grad_u3_q_point[q_index][0] * u1_q_point[q_index]
+                 + grad_u3_q_point[q_index][1] * u2_q_point[q_index]
+                 + grad_u3_q_point[q_index][2] * u3_q_point[q_index];
+
         for (const unsigned int i : fe_values.dof_indices())
         {
-          cell_convection_u1(i) += weight * fe_values.shape_value(i, q_index) * 
-                                  ( grad_u1_q_point[q_index][0] * u1_q_point[q_index] + 
-                                    grad_u1_q_point[q_index][1] * u2_q_point[q_index] +
-                                    grad_u1_q_point[q_index][2] * u3_q_point[q_index]);
-          cell_convection_u2(i) += weight * fe_values.shape_value(i, q_index) * 
-                                  ( grad_u2_q_point[q_index][0] * u1_q_point[q_index] + 
-                                    grad_u2_q_point[q_index][1] * u2_q_point[q_index] +
-                                    grad_u2_q_point[q_index][2] * u3_q_point[q_index]);
-          cell_convection_u3(i) += weight * fe_values.shape_value(i, q_index) * 
-                                  ( grad_u3_q_point[q_index][0] * u1_q_point[q_index] + 
-                                    grad_u3_q_point[q_index][1] * u2_q_point[q_index] +
-                                    grad_u3_q_point[q_index][2] * u3_q_point[q_index]);
+          cell_convection_u1(i) += weight * fe_values.shape_value(i, q_index) * ugu[0];
+          cell_convection_u2(i) += weight * fe_values.shape_value(i, q_index) * ugu[1];
+          cell_convection_u3(i) += weight * fe_values.shape_value(i, q_index) * ugu[2];
         }
       }
 
@@ -710,11 +785,12 @@ void INSE<dim>::setup_grad_pressure()
         double weight = fe_values.JxW(q_index);
         for (const unsigned int i : fe_values.dof_indices())
         {
-          cell_rhs_u1(i) += weight * fe_values.shape_value(i, q_index) * 
+          double phi = fe_values.shape_value(i, q_index);
+          cell_rhs_u1(i) += weight * phi * 
                             grad_pressure_q_point[q_index][0];
-          cell_rhs_u2(i) += weight * fe_values.shape_value(i, q_index) * 
+          cell_rhs_u2(i) += weight * phi * 
                             grad_pressure_q_point[q_index][1];
-          cell_rhs_u3(i) += weight * fe_values.shape_value(i, q_index) * 
+          cell_rhs_u3(i) += weight * phi * 
                             grad_pressure_q_point[q_index][2];
         }
       }
@@ -787,22 +863,23 @@ void INSE<dim>::update_pressure(
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
         double weight = fe_values.JxW(q_index);
+
+        Tensor<1,dim> ugu;
+
+        ugu[0] = - grad_u1_q_point[q_index][0] * u1_q_point[q_index]
+                 - grad_u1_q_point[q_index][1] * u2_q_point[q_index]
+                 - grad_u1_q_point[q_index][2] * u3_q_point[q_index];
+
+        ugu[1] = - grad_u2_q_point[q_index][0] * u1_q_point[q_index]
+                 - grad_u2_q_point[q_index][1] * u2_q_point[q_index]
+                 - grad_u2_q_point[q_index][2] * u3_q_point[q_index];
+
+        ugu[2] = - grad_u3_q_point[q_index][0] * u1_q_point[q_index]
+                 - grad_u3_q_point[q_index][1] * u2_q_point[q_index]
+                 - grad_u3_q_point[q_index][2] * u3_q_point[q_index];
+                 
         for (const unsigned int i : fe_values.dof_indices())
-        {
-          auto grad = fe_values.shape_grad(i, q_index);
-          cell_rhs(i)    += weight * grad[0] * 
-                                  ( - grad_u1_q_point[q_index][0] * u1_q_point[q_index]
-                                    - grad_u1_q_point[q_index][1] * u2_q_point[q_index]
-                                    - grad_u1_q_point[q_index][2] * u3_q_point[q_index])
-                          + weight * grad[1] * 
-                                  ( - grad_u2_q_point[q_index][0] * u1_q_point[q_index]
-                                    - grad_u2_q_point[q_index][1] * u2_q_point[q_index]
-                                    - grad_u2_q_point[q_index][2] * u3_q_point[q_index])
-                          + weight * grad[2] * 
-                                  ( - grad_u3_q_point[q_index][0] * u1_q_point[q_index]
-                                    - grad_u3_q_point[q_index][1] * u2_q_point[q_index]
-                                    - grad_u3_q_point[q_index][2] * u3_q_point[q_index]);
-        }
+          cell_rhs(i) += weight * ugu * fe_values.shape_grad(i, q_index);
       }
 
       for (const auto &f : cell->face_iterators()){
@@ -881,10 +958,10 @@ void INSE<dim>::run(){
                            Functions::ZeroFunction<dim>(),
                            prev_solution_u1);
   VectorTools::interpolate(dof_handler,
-                           Functions::ZeroFunction<dim>(),
+                           InitialTermU2<dim>(),
                            prev_solution_u2);
   VectorTools::interpolate(dof_handler,
-                           Functions::ZeroFunction<dim>(),
+                           InitialTermU3<dim>(),
                            prev_solution_u3);
 
   solution_u1 = prev_solution_u1;
