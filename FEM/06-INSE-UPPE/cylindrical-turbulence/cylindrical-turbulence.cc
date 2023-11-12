@@ -26,6 +26,7 @@
 #include <deal.II/grid/manifold_lib.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
+#include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/mapping_fe.h>
@@ -415,7 +416,7 @@ void INSE<dim>::output_result(const bool force_output)
 template <int dim>
 void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
 {
-  SolverControl            solver_control(2000, 1e-12);
+  SolverControl            solver_control(2000, ispressure ? 1e-8 : 1e-12);
   SolverCG<Vector<double>> solver(solver_control);
 
   if(!ispressure)
@@ -427,7 +428,7 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     MGTransferPrebuilt<Vector<double>> mg_transfer(mg_constrained_dofs);
     mg_transfer.build(dof_handler);
 
-    SolverControl coarse_solver_control(5000, 1e-12, false, false);
+    SolverControl coarse_solver_control(5000, 1e-9, false, false);
     SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
     PreconditionIdentity id;
     MGCoarseGridIterativeSolver<Vector<double>,
@@ -495,6 +496,7 @@ template <int dim>
 void INSE<dim>::setup_system()
 {
   dof_handler.distribute_dofs(fe);
+  DoFRenumbering::Cuthill_McKee(dof_handler);
 
   std::cout << std::endl
             << "===========================================" << std::endl
