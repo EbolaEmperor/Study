@@ -116,7 +116,7 @@ double InflowBoundaryTerm<dim>::value(const Point<dim> & p,
   (void)component;
   static const double Um = 6.0;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return Um * p[1] * (0.41-p[1]) / (0.41 * 0.41) * sin(M_PI*this->get_time()/8);
+  return Um * p[1] * (0.41-p[1]) / (0.41 * 0.41) * (1.0 - exp(-10.0 * this->get_time()));
 }
 
 
@@ -135,7 +135,7 @@ double InflowBoundaryTermDt<dim>::value(const Point<dim> & p,
   (void)component;
   static const double Um = 6.0;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return Um * p[1] * (0.41-p[1]) / (0.41 * 0.41) * cos(M_PI*this->get_time()/8) * M_PI/8;
+  return Um * p[1] * (0.41-p[1]) / (0.41 * 0.41) * 10.0 * exp(-10.0 * this->get_time());
 }
 
 
