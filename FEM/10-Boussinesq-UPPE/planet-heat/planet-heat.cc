@@ -277,7 +277,7 @@ Boussinesq<dim>::Boussinesq
 
 template <int dim>
 void Boussinesq<dim>::make_mesh(){
-  GridGenerator::hyper_shell(triangulation, Point<2>(0, 0), 0.5, 1.0, 8, true);
+  GridGenerator::hyper_shell(triangulation, Point<2>(0, 0), 0.5, 1.5, 8, true);
   triangulation.refine_global(level);
 
   for(const auto& cell : triangulation.active_cell_iterators())
