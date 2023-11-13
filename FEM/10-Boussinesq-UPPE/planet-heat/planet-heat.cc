@@ -100,6 +100,27 @@ struct CopyData
 };
 
 
+//----------------------------Initial Values----------------------------
+
+template <int dim>
+class InitialTerm : public Function<dim>
+{
+public:
+  virtual double value(const Point<dim>  &p,
+                       const unsigned int component = 0) const override;
+};
+
+template <int dim>
+double InitialTerm<dim>::value(const Point<dim> & p,
+                                   const unsigned int component) const
+{
+  (void)component;
+  (void)p;
+  const double L = p.norm();
+  return 1. - (L + 0.2 * ( L * (1. - L) * sin(6. * atan2(p[0], p[1])) ));
+}
+
+
 //----------------------------Boundary Values----------------------------
 
 template <int dim>
@@ -263,23 +284,24 @@ void Boussinesq<dim>::make_mesh(){
     for(const auto& face : cell->face_iterators())
       if (face->at_boundary()) face->set_all_boundary_ids(0);
 
-  for (Triangulation<2>::cell_iterator cell = triangulation.begin();
-       cell != triangulation.end(); ++cell)
-    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
-    {
-      bool is_inner_rim = true;
-      for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
-      {
-        Point<2> &vertex = cell->face(f)->vertex(v);
-        if (std::abs(vertex.distance(Point<2>(0, 0)) - 0.5) > 1e-8)
-        {
-          is_inner_rim = false;
-          break;
-        }
-      }
-      if (is_inner_rim)
-        cell->face(f)->set_all_boundary_ids(1);
-    }
+  // // Add the following codes to heat at ground.
+  // for (Triangulation<2>::cell_iterator cell = triangulation.begin();
+  //      cell != triangulation.end(); ++cell)
+  //   for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+  //   {
+  //     bool is_inner_rim = true;
+  //     for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
+  //     {
+  //       Point<2> &vertex = cell->face(f)->vertex(v);
+  //       if (std::abs(vertex.distance(Point<2>(0, 0)) - 0.5) > 1e-8)
+  //       {
+  //         is_inner_rim = false;
+  //         break;
+  //       }
+  //     }
+  //     if (is_inner_rim)
+  //       cell->face(f)->set_all_boundary_ids(1);
+  //   }
   std::cerr << "make_mesh done. cell: " << triangulation.n_active_cells() << std::endl;
 }
 
@@ -999,6 +1021,10 @@ void Boussinesq<dim>::run(){
   L_u1_stage1.reinit(solution_u1.size());
   L_u2_stage1.reinit(solution_u1.size());
   L_T_stage1.reinit(solution_u1.size());
+
+  VectorTools::interpolate(dof_handler,
+                           InitialTerm<dim>(),
+                           prev_temperature);
 
   solution_u1 = prev_solution_u1;
   solution_u2 = prev_solution_u2;
