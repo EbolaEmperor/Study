@@ -52,10 +52,12 @@
 
 using namespace dealii;
 
-const double Prandtl               = 0.71;
-const double Rayleigh              = 3.4e5;
+const double Prandtl               = 7.1;
+const double Rayleigh              = 3.4e4;
 const double diffusion_coefficient = sqrt(Prandtl/Rayleigh);
 const double heat_diffusion        = 1. / sqrt(Prandtl*Rayleigh);
+const double gravity_coefficient   = 2.0;
+const double friction_heat_coef    = 1./40000;
 
 //--------------------------Data Structures for MG--------------------------
 
@@ -186,6 +188,8 @@ private:
   void setup_u_grad_T(const Vector<double>& u1, 
                       const Vector<double>& u2,
                       const Vector<double>& temperature);
+  void setup_friction_heat(const Vector<double>& u1, 
+                           const Vector<double>& u2);
 
   void make_constraints_no_slip();
   void make_constraints_pressure();
@@ -239,6 +243,7 @@ private:
   Vector<double> grad_pressure_u2;
   Vector<double> forcing_1;
   Vector<double> forcing_2;
+  Vector<double> friction_heat;
   Vector<double> u_grad_temperature;
 
   Vector<double> temperature;
@@ -590,6 +595,7 @@ void Boussinesq<dim>::setup_system()
   grad_pressure_u2.reinit(dof_handler.n_dofs());
   forcing_1.reinit(dof_handler.n_dofs());
   forcing_2.reinit(dof_handler.n_dofs());
+  friction_heat.reinit(dof_handler.n_dofs());
   u_grad_temperature.reinit(dof_handler.n_dofs());
 
   temperature.reinit(dof_handler.n_dofs());
@@ -815,8 +821,8 @@ void Boussinesq<dim>::setup_forcing(const Vector<double>& temperature)
         for (const unsigned int i : fe_values.dof_indices())
         {
           double g = weight * fe_values.shape_value(i, q_index) * t_q_point[q_index];
-          cell_rhs_1(i) += g * dx;
-          cell_rhs_2(i) += g * dy;
+          cell_rhs_1(i) += g * dx * gravity_coefficient;
+          cell_rhs_2(i) += g * dy * gravity_coefficient;
         }
       }
 
@@ -876,6 +882,51 @@ void Boussinesq<dim>::setup_u_grad_T(const Vector<double>& u1,
       cell->get_dof_indices(local_dof_indices);
       for (const unsigned int i : fe_values.dof_indices())
         u_grad_temperature[local_dof_indices[i]] += cell_rhs(i);
+    }
+}
+
+
+template <int dim>
+void Boussinesq<dim>::setup_friction_heat(const Vector<double>& u1, 
+                                          const Vector<double>& u2)
+{
+  u_grad_temperature.reinit(solution_u1.size());
+
+  const unsigned dofs_per_cell = fe.n_dofs_per_cell();
+  Vector<double> cell_rhs(dofs_per_cell);
+  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+  QGauss<dim> quadrature_formula(fe.degree+1);
+  FEValues<dim> fe_values(fe,
+                          quadrature_formula,
+                          update_values | update_gradients |
+                          update_JxW_values | update_quadrature_points);
+
+  std::vector<Tensor<1,dim>> grad_u1_q_point(quadrature_formula.size());
+  std::vector<Tensor<1,dim>> grad_u2_q_point(quadrature_formula.size());
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      cell_rhs = 0.;
+      fe_values.reinit(cell);
+      fe_values.get_function_gradients(u1, grad_u1_q_point);
+      fe_values.get_function_gradients(u2, grad_u2_q_point);
+      auto q_points = fe_values.get_quadrature_points();
+
+      for (const unsigned int q_index : fe_values.quadrature_point_indices())
+      {
+        double weight = fe_values.JxW(q_index);
+        double friction = grad_u1_q_point[q_index] * grad_u1_q_point[q_index]
+                        + grad_u2_q_point[q_index] * grad_u2_q_point[q_index]; 
+        for (const unsigned int i : fe_values.dof_indices())
+          cell_rhs(i) += weight * friction * friction_heat_coef 
+                       * fe_values.shape_value(i, q_index);
+      }
+
+      // distribute to global
+      cell->get_dof_indices(local_dof_indices);
+      for (const unsigned int i : fe_values.dof_indices())
+        friction_heat[local_dof_indices[i]] += cell_rhs(i);
     }
 }
 
@@ -973,11 +1024,11 @@ void Boussinesq<dim>::update_pressure(
         {
           auto grad = fe_values.shape_grad(i, q_index);
           cell_rhs(i)    += weight * grad[0] * 
-                                  (   t_q_point[q_index] * dx
+                                  (   t_q_point[q_index] * dx * gravity_coefficient
                                     - grad_u1_q_point[q_index][0] * u1_q_point[q_index]
                                     - grad_u1_q_point[q_index][1] * u2_q_point[q_index])
                           + weight * grad[1] * 
-                                  (   t_q_point[q_index] * dy
+                                  (   t_q_point[q_index] * dy * gravity_coefficient
                                     - grad_u2_q_point[q_index][0] * u1_q_point[q_index]
                                     - grad_u2_q_point[q_index][1] * u2_q_point[q_index]);
         }
@@ -1083,6 +1134,8 @@ void Boussinesq<dim>::run(){
     setup_u_grad_T(prev_solution_u1, prev_solution_u2, prev_temperature);
     L_T_stage1 = u_grad_temperature;
     L_T_stage1 *= -1.;
+    setup_friction_heat(prev_solution_u1, prev_solution_u2);
+    L_T_stage1.add(1., friction_heat);
     system_rhs.add(time_step, L_T_stage1);
 
     make_constraints_temperature(time-time_step);
@@ -1144,6 +1197,8 @@ void Boussinesq<dim>::run(){
     system_rhs.add(0.5*time_step, L_T_stage1);
     setup_u_grad_T(middle_solution_u1, middle_solution_u2, middle_temperature);
     system_rhs.add(-0.5*time_step, u_grad_temperature);
+    setup_friction_heat(middle_solution_u1, middle_solution_u2);
+    system_rhs.add(0.5*time_step, friction_heat);
 
     make_constraints_temperature(time);
     solve_temprature(temperature);
