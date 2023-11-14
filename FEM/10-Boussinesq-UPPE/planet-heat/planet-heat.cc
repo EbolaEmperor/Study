@@ -1,11 +1,12 @@
-//----------------------------------------------------------
-// This code is for high-box left-heat test
+//-----------------------------------------------------------------
+// This code simulates the heat flow inner a planet.
+// The gravity is toward the center and proportional to the radius.
 // 
 // Velocity-pressure decomposition method: UPPE
 //   (See the formula (19) of Jianguo Liu (2010) )
 // Time discretization: IMEX-trapezoidal (2nd order)
 // Space discretization: Q2 element (2nd order in H1)
-//----------------------------------------------------------
+//-----------------------------------------------------------------
 
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/quadrature_lib.h>
@@ -277,7 +278,7 @@ Boussinesq<dim>::Boussinesq
 
 template <int dim>
 void Boussinesq<dim>::make_mesh(){
-  GridGenerator::hyper_shell(triangulation, Point<2>(0, 0), 0.5, 1.5, 8, true);
+  GridGenerator::hyper_shell(triangulation, Point<2>(0, 0), 0.5, 1.0, 8, true);
   triangulation.refine_global(level);
 
   for(const auto& cell : triangulation.active_cell_iterators())
@@ -809,9 +810,8 @@ void Boussinesq<dim>::setup_forcing(const Vector<double>& temperature)
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
         double weight = fe_values.JxW(q_index);
-        double L = q_points[q_index].norm();
-        double dx = q_points[q_index][0] / L;
-        double dy = q_points[q_index][1] / L;
+        const double& dx = q_points[q_index][0];
+        const double& dy = q_points[q_index][1];
         for (const unsigned int i : fe_values.dof_indices())
         {
           double g = weight * fe_values.shape_value(i, q_index) * t_q_point[q_index];
@@ -967,9 +967,8 @@ void Boussinesq<dim>::update_pressure(
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
         double weight = fe_values.JxW(q_index);
-        double L = q_points[q_index].norm();
-        double dx = q_points[q_index][0] / L;
-        double dy = q_points[q_index][1] / L;
+        const double& dx = q_points[q_index][0];
+        const double& dy = q_points[q_index][1];
         for (const unsigned int i : fe_values.dof_indices())
         {
           auto grad = fe_values.shape_grad(i, q_index);

@@ -117,13 +117,14 @@ double InitialTermTemperature<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  static const double H = 2.0;
+  static const double H = 64.0;
   static Point<3> center(0.5, 0.5, 0.2);
   static double outerR = 0.3;
   static double innerR = 0.1;
 
   if(p[2] <= center[2]-innerR || p[2] >= center[2]+innerR) return 0;
   auto dp = p - center;
+  if(dp[0] < 0) return 0;
   double dz = dp[2];
   double A = sqrt(dp[0]*dp[0]+dp[1]*dp[1]);
   if(A <= outerR-innerR || A >= outerR+innerR) return 0;
@@ -132,7 +133,7 @@ double InitialTermTemperature<dim>::value(const Point<dim> & p,
   double B = fabs(outerR - A);
   double D = sqrt(dz*dz + B*B);
   if(D > innerR) return 0;
-  return H * pow(1.0 - D/innerR, 2.0);
+  return H * pow(1.0 - D/innerR, 2.0) * dp[0] * dp[0];
 }
 
 
