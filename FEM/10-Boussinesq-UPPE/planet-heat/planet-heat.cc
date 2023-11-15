@@ -57,7 +57,7 @@ const double Rayleigh              = 3.4e6;
 const double diffusion_coefficient = sqrt(Prandtl/Rayleigh);
 const double heat_diffusion        = 1. / sqrt(Prandtl*Rayleigh);
 const double gravity_coefficient   = 0.2;
-const double friction_heat_coef    = 1./4.3e6;
+const double friction_heat_coef    = 1./4.1e6;
 
 //--------------------------Data Structures for MG--------------------------
 
@@ -141,7 +141,7 @@ double HotBoundaryTerm<dim>::value(const Point<dim> & p,
   (void)component;
   (void)p;
   const double L = p.norm();
-  return 1. * (L + 0.2 * ( L * (1. - L) * sin(6. * atan2(p[0], p[1])) ));
+  return 1. - (L + 0.2 * ( L * (1. - L) * sin(6. * atan2(p[0], p[1])) ));
 }
 
 
@@ -290,24 +290,24 @@ void Boussinesq<dim>::make_mesh(){
     for(const auto& face : cell->face_iterators())
       if (face->at_boundary()) face->set_all_boundary_ids(0);
 
-  // // Add the following codes to heat at ground.
-  // for (Triangulation<2>::cell_iterator cell = triangulation.begin();
-  //      cell != triangulation.end(); ++cell)
-  //   for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
-  //   {
-  //     bool is_inner_rim = true;
-  //     for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
-  //     {
-  //       Point<2> &vertex = cell->face(f)->vertex(v);
-  //       if (std::abs(vertex.distance(Point<2>(0, 0)) - 0.5) > 1e-8)
-  //       {
-  //         is_inner_rim = false;
-  //         break;
-  //       }
-  //     }
-  //     if (is_inner_rim)
-  //       cell->face(f)->set_all_boundary_ids(1);
-  //   }
+  // Add the following codes to heat at ground.
+  for (Triangulation<2>::cell_iterator cell = triangulation.begin();
+       cell != triangulation.end(); ++cell)
+    for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
+    {
+      bool is_inner_rim = true;
+      for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_face; ++v)
+      {
+        Point<2> &vertex = cell->face(f)->vertex(v);
+        if (std::abs(vertex.distance(Point<2>(0, 0)) - 0.5) > 1e-8)
+        {
+          is_inner_rim = false;
+          break;
+        }
+      }
+      if (is_inner_rim)
+        cell->face(f)->set_all_boundary_ids(1);
+    }
   std::cerr << "make_mesh done. cell: " << triangulation.n_active_cells() << std::endl;
 }
 
