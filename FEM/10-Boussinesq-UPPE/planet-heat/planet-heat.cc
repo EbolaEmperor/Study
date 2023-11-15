@@ -56,7 +56,7 @@ const double Prandtl               = 7.1;
 const double Rayleigh              = 3.4e6;
 const double diffusion_coefficient = sqrt(Prandtl/Rayleigh);
 const double heat_diffusion        = 1. / sqrt(Prandtl*Rayleigh);
-const double gravity_coefficient   = 0.1;
+const double gravity_coefficient   = 0.2;
 const double friction_heat_coef    = 1./4.3e6;
 
 //--------------------------Data Structures for MG--------------------------

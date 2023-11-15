@@ -1,5 +1,6 @@
 //----------------------------------------------------------
-// This code is for cylindrical turbulence test
+// This code is for single-vortex test
+// See section 6.2 of Zhang [2016]
 // 
 // Velocity-pressure decomposition method: UPPE
 //   (See the formula (19) of Jianguo Liu (2010) )
@@ -55,8 +56,7 @@ using namespace dealii;
 #define NO_FORCING_TERM
 #define OUTPUT_CG_ITERATIONS
 
-const unsigned Raynolds = 1000;
-const double diffusion_coefficient = 1.0 / Raynolds;
+const double diffusion_coefficient = 3.4e-6;
 
 //--------------------------Data Structures for MG--------------------------
 
@@ -128,7 +128,16 @@ double Initial1<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return sin(2*M_PI*p[1]) * pow(sin(M_PI*p[0]), 2);
+  static const Point<2> center(0.5, 0.5);
+  static const double R = 0.2;
+  static const double RR = 0.5*R - 4*R*R*R;
+  auto dp = p - center;
+  double rv = dp.norm();
+  if(rv==0) return 0;
+  double v = (rv < R) ? 
+             (0.5*rv - 4.0*rv*rv*rv) : 
+             R / rv * RR;
+  return - v * dp[1] / rv;
 }
 
 
@@ -138,7 +147,16 @@ double Initial2<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return - sin(2*M_PI*p[0]) * pow(sin(M_PI*p[1]), 2);
+  static const Point<2> center(0.5, 0.5);
+  static const double R = 0.2;
+  static const double RR = 0.5*R - 4*R*R*R;
+  auto dp = p - center;
+  double rv = dp.norm();
+  if(rv==0) return 0;
+  double v = (rv < R) ? 
+             (0.5*rv - 4.0*rv*rv*rv) : 
+             (R / rv * RR);
+  return v * dp[0] / rv;
 }
 
 
