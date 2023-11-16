@@ -117,8 +117,8 @@ double HeatingTerm<dim>::value(const Point<dim> & p,
 {
   (void)component;
   (void)p;
-  static const double heating_power = 1.;
-  static const double smoothing_p = 2.;
+  static const double heating_power = 10.;
+  static const int smoothing_p = 0;
   static const double radius = 0.05;
   static const int n_heating = 3;
   static const Point<2> centers[] = {
@@ -133,7 +133,9 @@ double HeatingTerm<dim>::value(const Point<dim> & p,
     auto dp = p - centers[i];
     double R = dp.norm();
     if(R > radius) continue;
-    else heating += pow(1. - R/radius, smoothing_p) * heating_power;
+    else heating += (smoothing_p==0) ? 
+                    heating_power :
+                    pow(1. - R/radius, smoothing_p) * heating_power;
   }
 
   return heating;
@@ -288,7 +290,7 @@ Boussinesq<dim>::Boussinesq
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(2e-3)
+  , time_step(1e-3)
 {}
 
 
@@ -344,7 +346,7 @@ void Boussinesq<dim>::compute_vortricity()
 template <int dim>
 void Boussinesq<dim>::output_result(const bool force_output)
 {
-  if(!force_output && (timestep_number % 50)) return;
+  if(!force_output && (timestep_number % 20)) return;
   DataOut<dim> data_out;
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution_u1, "solution_u1");
