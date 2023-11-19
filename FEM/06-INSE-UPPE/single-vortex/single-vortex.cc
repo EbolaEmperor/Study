@@ -184,6 +184,12 @@ private:
   void solve_time_step(Vector<double>& solution, const bool ispressure = false);
   void compute_vortricity();
   void output_result(const bool force_output = false);
+  
+  void pre_projections(Vector<double>& u1, 
+                       Vector<double>& u2, 
+                       const int &times);
+  void projection_poisson_setup(const Vector<double>& u1, 
+                                const Vector<double>& u2);
 
   Triangulation<dim> triangulation;
   FE_Q<dim>          fe;
@@ -242,7 +248,7 @@ INSE<dim>::INSE
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(4e-4)
+  , time_step(1e-2 / (1<<level) * 256.)
 {}
 
 
@@ -759,6 +765,85 @@ void INSE<dim>::update_pressure(
 
 
 template <int dim>
+void INSE<dim>::projection_poisson_setup(const Vector<double>& u1, 
+                                         const Vector<double>& u2)
+{
+  system_rhs.reinit(solution_u1.size());
+
+  const unsigned dofs_per_cell = fe.n_dofs_per_cell();
+  Vector<double> cell_rhs(dofs_per_cell);
+  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+  QGauss<dim> quadrature_formula(fe.degree+1);
+  FEValues<dim> fe_values(fe,
+                          quadrature_formula,
+                          update_values | update_gradients |
+                          update_JxW_values);
+  std::vector<double> u1_q_point(quadrature_formula.size());
+  std::vector<double> u2_q_point(quadrature_formula.size());
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      cell_rhs = 0.;
+      fe_values.reinit(cell);
+      fe_values.get_function_values(u1, u1_q_point);
+      fe_values.get_function_values(u2, u2_q_point);
+
+      for (const unsigned int q_index : fe_values.quadrature_point_indices())
+      {
+        double weight = fe_values.JxW(q_index);
+        for (const unsigned int i : fe_values.dof_indices())
+        {
+          auto grad_phi = fe_values.shape_grad(i, q_index);
+          cell_rhs(i) += weight * ( u1_q_point[q_index] * grad_phi[0]
+                                  + u2_q_point[q_index] * grad_phi[1] );
+        }
+      }
+
+      // distribute to global
+      cell->get_dof_indices(local_dof_indices);
+      for (const unsigned int i : fe_values.dof_indices())
+        system_rhs[local_dof_indices[i]] += cell_rhs(i);
+    }
+}
+
+
+template <int dim>
+void INSE<dim>::pre_projections(Vector<double>& u1, 
+                                Vector<double>& u2, 
+                                const int &times)
+{
+  for(int T = 0; T < times; T++)
+  {
+    std::cout << "Pre-projections cycle " << T << std::endl;
+    
+    projection_poisson_setup(u1, u2);
+    system_matrix_pressure.copy_from(laplace_matrix_pressure);
+    constraints_pressure.condense(system_matrix_pressure, system_rhs);
+    solve_time_step(pressure, true);
+    constraints_pressure.distribute(pressure);
+    setup_grad_pressure();
+    
+    system_matrix.copy_from(mass_matrix);
+    mass_matrix.vmult(system_rhs, u1);
+    system_rhs.add(-1., grad_pressure_u1);
+    constraints_u1.condense(system_matrix, system_rhs);
+    solve_time_step(u1);
+    constraints_u1.distribute(u1);
+    
+    system_matrix.copy_from(mass_matrix);
+    mass_matrix.vmult(system_rhs, u2);
+    system_rhs.add(-1., grad_pressure_u2);
+    constraints_u2.condense(system_matrix, system_rhs);
+    solve_time_step(u2);
+    constraints_u2.distribute(u2);
+    
+    std::cout << std::endl;
+  }
+}
+
+
+template <int dim>
 void INSE<dim>::run(){
   Vector<double> tmp;
   Vector<double> middle_solution_u1;
@@ -792,6 +877,8 @@ void INSE<dim>::run(){
   VectorTools::interpolate(dof_handler,
                            initial_2,
                            prev_solution_u2);
+  
+  pre_projections(prev_solution_u1, prev_solution_u2, 10);
   solution_u1 = prev_solution_u1;
   solution_u2 = prev_solution_u2;
 
