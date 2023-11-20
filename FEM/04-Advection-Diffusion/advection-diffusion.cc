@@ -134,7 +134,7 @@ template <int dim>
 AdvectionDiffusionEquation<dim>::AdvectionDiffusionEquation()
   : fe(1)
   , dof_handler(triangulation)
-  , time_step(1. / 100)
+  , time_step(1. / 500)
 {}
 
 
@@ -319,7 +319,7 @@ void AdvectionDiffusionEquation<dim>::setup_system()
 
 template <int dim>
 void AdvectionDiffusionEquation<dim>::run(){
-  const unsigned initial_global_refinement = 2;
+  const unsigned initial_global_refinement = 4;
   const unsigned n_adaptive_pre_refinement_steps = 5;
   Vector<double> tmp;
   Vector<double> middle_solution;
@@ -393,7 +393,7 @@ start_time_iteration:
 
     constraints.condense(system_matrix, system_rhs);
     solve_time_step(solution);
-    output_result();
+    if(timestep_number % 10 == 0) output_result();
 
     // Refine mesh 1 times per 5 time-step. At the begining, refine 5 times.
     if ((timestep_number == 1) &&
@@ -406,7 +406,7 @@ start_time_iteration:
         std::cout << std::endl;
         goto start_time_iteration;
       }
-    else if ((timestep_number > 0) && (timestep_number % 5 == 0))
+    else if ((timestep_number > 0) && (timestep_number % 10 == 0))
       {
         refine_mesh(initial_global_refinement,
                     initial_global_refinement +
