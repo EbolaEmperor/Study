@@ -166,7 +166,7 @@ double Initial2<dim>::value(const Point<dim> & p,
 template <int dim>
 class INSE{
 public:
-  INSE(const int &, const double &, const bool &simp = false);
+  INSE(const int &, const double &, const int &region = 0);
   void run();
 
 private:
@@ -234,7 +234,7 @@ private:
   double   time;
   double   time_step;
   unsigned timestep_number;
-  bool     simplex;
+  int      region;
 };
 
 
@@ -243,22 +243,22 @@ private:
 
 template <int dim>
 INSE<dim>::INSE
-  (const int &N, const double &T, const bool &simplex)
+  (const int &N, const double &T, const int &region)
   : triangulation(Triangulation<dim>::limit_level_difference_at_vertices)
   , fe(2)
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
   , time_step(1e-2 / (1<<level) * 256.)
-  , simplex(simplex)
+  , region(region)
 {}
 
 
 template <int dim>
 void INSE<dim>::make_mesh(){
-  if(!simplex)
+  if(region==0)
     GridGenerator::hyper_cube(triangulation);
-  else
+  else if(region==1)
   {
     std::vector<Point<dim>> vertices;
     vertices.emplace_back(0.5, 1.3);
@@ -266,6 +266,8 @@ void INSE<dim>::make_mesh(){
     vertices.emplace_back(0.5-0.4*sqrt(3.), 0.1);
     GridGenerator::simplex(triangulation, vertices);
   }
+  else if(region==2)
+    GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .5), .5);
   triangulation.refine_global(level);
   std::cerr << "make_mesh done. cell: " << triangulation.n_active_cells() << std::endl;
 }
@@ -856,7 +858,8 @@ void INSE<dim>::pre_projections(Vector<double>& u1,
 
 template <int dim>
 void INSE<dim>::run(){
-  if(simplex) time_step *= 0.5;
+  if(region==1) time_step *= 0.5;
+  if(region==2) time_step *= 0.25;
   
   Vector<double> tmp;
   Vector<double> middle_solution_u1;
@@ -999,17 +1002,22 @@ void INSE<dim>::run(){
 int main(int argc, const char *argv[]){
   if(argc < 3){
     std::cerr << "Param error! Please run with command" << std::endl;
-    std::cerr << "./single-vortex N T [s]" << std::endl;
-    std::cerr << "where N is the level of grid, T is end_time. 's' is for triangle region." << std::endl;
+    std::cerr << "./single-vortex N T [t/c]" << std::endl;
+    std::cerr << "where N is the level of grid, T is end_time. the option argument is for the region." << std::endl;
     return -1;
   }
-  bool triangle = false;
-  if(argc==4 && argv[3][0]=='s') triangle = true;
+  // none=0 for square
+  int region = 0;
+  // 't'=1 for triangle
+  if(argc==4 && argv[3][0]=='t') region = 1;
+  // 'c'=2 for circle
+  if(argc==4 && argv[3][0]=='c') region = 2;
   int level = std::stoi(argv[1]);
   double end_time = std::stod(argv[2]);
-  // If triangle is false, compute in the unit square.
-  // If triangle is true, compute in the triangle with edge length sqrt(3) centered at (0.5, 0.5).
-  INSE<2> inse(level, end_time, triangle);
+  // If region=0, compute in the unit square.
+  // If region=1, compute in the triangle with edge length sqrt(3) centered at (0.5, 0.5).
+  // If region=2, compute in the circle with radius 0.5 centered at (0.5, 0.5).
+  INSE<2> inse(level, end_time, region);
   inse.run();
   return 0;
 }
