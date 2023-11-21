@@ -269,7 +269,7 @@ void INSE<dim>::make_mesh(){
   else if(region==2)
     GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .5), .5);
   else if(region==3)
-    GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .4), .5);
+    GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .25), .5);
   triangulation.refine_global(level);
   std::cerr << "make_mesh done. cell: " << triangulation.n_active_cells() << std::endl;
 }
@@ -861,7 +861,8 @@ void INSE<dim>::pre_projections(Vector<double>& u1,
 template <int dim>
 void INSE<dim>::run(){
   if(region==1) time_step *= 0.5;
-  if(region==2 || region==3) time_step *= 0.25;
+  if(region==2) time_step *= 0.25;
+  if(region==3) time_step *= 0.125;
   
   Vector<double> tmp;
   Vector<double> middle_solution_u1;
@@ -1018,7 +1019,7 @@ int main(int argc, const char *argv[]){
   // If region=0, compute in the unit square.
   // If region=1, compute in the triangle with edge length sqrt(3) centered at (0.5, 0.5).
   // If region=2, compute in the circle with radius 0.5 centered at (0.5, 0.5).
-  // If region=2, compute in the circle with radius 0.5 centered at (0.5, 0.4).
+  // If region=2, compute in the circle with radius 0.5 centered at (0.5, 0.25).
   INSE<2> inse(level, end_time, region);
   inse.run();
   return 0;
