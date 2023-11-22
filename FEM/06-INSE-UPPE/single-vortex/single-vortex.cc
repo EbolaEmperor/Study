@@ -166,7 +166,10 @@ double Initial2<dim>::value(const Point<dim> & p,
 template <int dim>
 class INSE{
 public:
-  INSE(const int &, const double &, const int &region = 0);
+  INSE(const int &, 
+       const double &, 
+       const int &region = 0,
+       const double &offset = 0.);
   void run();
 
 private:
@@ -235,6 +238,7 @@ private:
   double   time_step;
   unsigned timestep_number;
   int      region;
+  double   offset;
 };
 
 
@@ -243,7 +247,7 @@ private:
 
 template <int dim>
 INSE<dim>::INSE
-  (const int &N, const double &T, const int &region)
+  (const int &N, const double &T, const int &region, const double &offset)
   : triangulation(Triangulation<dim>::limit_level_difference_at_vertices)
   , fe(2)
   , dof_handler(triangulation)
@@ -251,6 +255,7 @@ INSE<dim>::INSE
   , end_time(T)
   , time_step(1e-2 / (1<<level) * 256.)
   , region(region)
+  , offset(offset)
 {}
 
 
@@ -269,7 +274,7 @@ void INSE<dim>::make_mesh(){
   else if(region==2)
     GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .5), .5);
   else if(region==3)
-    GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .25), .5);
+    GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .5-offset), .5);
   triangulation.refine_global(level);
   std::cerr << "make_mesh done. cell: " << triangulation.n_active_cells() << std::endl;
 }
@@ -1003,9 +1008,10 @@ void INSE<dim>::run(){
 
 
 int main(int argc, const char *argv[]){
-  if(argc < 3){
+  if(argc < 3)
+  {
     std::cerr << "Param error! Please run with command" << std::endl;
-    std::cerr << "./single-vortex N T [1/2/3]" << std::endl;
+    std::cerr << "./single-vortex N T [1/2/3] [offset]" << std::endl;
     std::cerr << "where N is the level of grid, T is end_time. the option argument is for the region." << std::endl;
     return -1;
   }
@@ -1013,14 +1019,19 @@ int main(int argc, const char *argv[]){
   int region = 0;
   if(argc==4 && argv[3][0]=='1') region = 1;
   if(argc==4 && argv[3][0]=='2') region = 2;
-  if(argc==4 && argv[3][0]=='3') region = 3;
+  double offset = 0.;
+  if(argc>=4 && argv[3][0]=='3')
+  {
+    region = 3;
+    offset = (argc==5) ? std::stod(argv[4]) : 0.25;
+  }
   int level = std::stoi(argv[1]);
   double end_time = std::stod(argv[2]);
   // If region=0, compute in the unit square.
   // If region=1, compute in the triangle with edge length sqrt(3) centered at (0.5, 0.5).
   // If region=2, compute in the circle with radius 0.5 centered at (0.5, 0.5).
-  // If region=2, compute in the circle with radius 0.5 centered at (0.5, 0.25).
-  INSE<2> inse(level, end_time, region);
+  // If region=3, compute in the circle with radius 0.5 centered at (0.5, 0.5-offset), [default: offset=0.25]
+  INSE<2> inse(level, end_time, region, offset);
   inse.run();
   return 0;
 }
