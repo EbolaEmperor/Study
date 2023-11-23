@@ -107,7 +107,10 @@ struct CopyData
 template <int dim>
 class Initial1 : public Function<dim>
 {
+private:
+  bool double_vortex;
 public:
+  Initial1(const bool& double_vortex = false);
   virtual double value(const Point<dim>  &p,
                         const unsigned int component = 0) const override;
 };
@@ -116,10 +119,23 @@ public:
 template <int dim>
 class Initial2 : public Function<dim>
 {
+private:
+  bool double_vortex;
 public:
+  Initial2(const bool& double_vortex = false);
   virtual double value(const Point<dim>  &p,
                         const unsigned int component = 0) const override;
 };
+
+
+template <int dim>
+Initial1<dim>::Initial1(const bool& double_vortex):
+  double_vortex(double_vortex) {}
+
+
+template <int dim>
+Initial2<dim>::Initial2(const bool& double_vortex):
+  double_vortex(double_vortex) {}
 
 
 template <int dim>
@@ -128,16 +144,33 @@ double Initial1<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
+  double res = 0.;
   static const Point<2> center(0.5, 0.5);
   static const double R = 0.2;
   static const double RR = 0.5*R - 4*R*R*R;
   auto dp = p - center;
   double rv = dp.norm();
-  if(rv==0) return 0;
-  double v = (rv < R) ? 
-             (0.5*rv - 4.0*rv*rv*rv) : 
-             R / rv * RR;
-  return - v * dp[1] / rv;
+  if(rv!=0)
+  {
+    double v = (rv < R) ? 
+               (0.5*rv - 4.0*rv*rv*rv) : 
+               R / rv * RR;
+    res -= v * dp[1] / rv;
+  }
+  if(double_vortex)
+  {
+    static const Point<2> center2(1.5, 0.5);
+    auto dp2 = p - center2;
+    double rv2 = dp2.norm();
+    if(rv2!=0)
+    {
+      double v2 = (rv2 < R) ? 
+                  (0.5*rv2 - 4.0*rv2*rv2*rv2) : 
+                  R / rv2 * RR;
+      res += v2 * dp2[1] / rv2;
+    }
+  }
+  return res;
 }
 
 
@@ -147,16 +180,33 @@ double Initial2<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
+  double res = 0.;
   static const Point<2> center(0.5, 0.5);
   static const double R = 0.2;
   static const double RR = 0.5*R - 4*R*R*R;
   auto dp = p - center;
   double rv = dp.norm();
-  if(rv==0) return 0;
-  double v = (rv < R) ? 
-             (0.5*rv - 4.0*rv*rv*rv) : 
-             (R / rv * RR);
-  return v * dp[0] / rv;
+  if(rv!=0)
+  {
+    double v = (rv < R) ? 
+               (0.5*rv - 4.0*rv*rv*rv) : 
+               R / rv * RR;
+    res += v * dp[0] / rv;
+  }
+  if(double_vortex)
+  {
+    static const Point<2> center2(1.5, 0.5);
+    auto dp2 = p - center2;
+    double rv2 = dp2.norm();
+    if(rv2!=0)
+    {
+      double v2 = (rv2 < R) ? 
+                  (0.5*rv2 - 4.0*rv2*rv2*rv2) : 
+                  R / rv2 * RR;
+      res -= v2 * dp2[0] / rv2;
+    }
+  }
+  return res;
 }
 
 
@@ -275,6 +325,15 @@ void INSE<dim>::make_mesh(){
     GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .5), .5);
   else if(region==3)
     GridGenerator::hyper_ball_balanced(triangulation, Point<2>(.5, .5-offset), .5);
+  else if(region==4)
+  {
+    GridGenerator::subdivided_hyper_rectangle(
+      triangulation,
+      std::vector<unsigned int>({2U, 1U}),
+      Point<2>(0., 0.),
+      Point<2>(2., 1.),
+      false);
+  }
   triangulation.refine_global(level);
   std::cerr << "make_mesh done. cell: " << triangulation.n_active_cells() << std::endl;
 }
@@ -892,8 +951,8 @@ void INSE<dim>::run(){
   forcing_term_1.reinit(solution_u1.size());
   forcing_term_2.reinit(solution_u1.size());
 
-  Initial1<dim> initial_1;
-  Initial2<dim> initial_2;
+  Initial1<dim> initial_1(region==4);
+  Initial2<dim> initial_2(region==4);
   
   VectorTools::interpolate(dof_handler,
                            initial_1,
@@ -1017,20 +1076,17 @@ int main(int argc, const char *argv[]){
   }
   // none=0 for square
   int region = 0;
-  if(argc==4 && argv[3][0]=='1') region = 1;
-  if(argc==4 && argv[3][0]=='2') region = 2;
+  if(argc>=4) region = std::stoi(argv[3]);
   double offset = 0.;
-  if(argc>=4 && argv[3][0]=='3')
-  {
-    region = 3;
-    offset = (argc==5) ? std::stod(argv[4]) : 0.25;
-  }
+  if(argc==5 && region==3)
+    offset = std::stod(argv[4]);
   int level = std::stoi(argv[1]);
   double end_time = std::stod(argv[2]);
   // If region=0, compute in the unit square.
   // If region=1, compute in the triangle with edge length sqrt(3) centered at (0.5, 0.5).
   // If region=2, compute in the circle with radius 0.5 centered at (0.5, 0.5).
   // If region=3, compute in the circle with radius 0.5 centered at (0.5, 0.5-offset), [default: offset=0.25]
+  // If region=4, compute in the rectangle [0,2]*[0,1], with two vorteces centered at (0.5,0.5) and (1.5,0.5) respectively and with different orientation.
   INSE<2> inse(level, end_time, region, offset);
   inse.run();
   return 0;
