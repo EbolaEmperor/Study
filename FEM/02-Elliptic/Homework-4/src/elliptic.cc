@@ -185,10 +185,10 @@ void Elliptic::solve()
   SolverControl            solver_control(500000, 1e-6 * system_rhs.l2_norm());
   SolverCG<Vector<double>> solver(solver_control);
 
-  // PreconditionSSOR<SparseMatrix<double>> preconditioner;
-  // preconditioner.initialize(system_matrix, 1.99999999);
+  PreconditionSSOR<SparseMatrix<double>> preconditioner;
+  preconditioner.initialize(system_matrix, 1.99999999);
 
-  solver.solve(system_matrix, solution, system_rhs, PreconditionIdentity());
+  solver.solve(system_matrix, solution, system_rhs, preconditioner);
   std::cout << "   " << solver_control.last_step()
             << " CG iterations." << std::endl;
 
