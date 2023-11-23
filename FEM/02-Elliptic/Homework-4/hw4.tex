@@ -1,0 +1,87 @@
+%!TEX program = xelatex
+% 完整编译: xelatex -> biber/bibtex -> xelatex -> xelatex
+\documentclass[lang=cn,11pt,a4paper]{elegantpaper}
+
+\title{有限元第二次编程作业}
+\author{W Huang}
+\date{\zhtoday}
+
+
+% 本文档命令
+\usepackage{array}
+\usepackage{float}
+\usepackage{multirow}
+\newcommand{\ccr}[1]{\makecell{{\color{#1}\rule{1cm}{1cm}}}}
+
+\begin{document}
+
+\maketitle
+
+\section{编程第一题}
+
+\subsection{求解设置}
+
+求解PDE
+\begin{equation}
+    \left\{
+        \begin{array}{l}
+            -\Delta u = f,\quad \text{in}\;(0,1),\\
+            u(0) = u(1) = 0.
+        \end{array}
+    \right.
+\end{equation}
+
+取右端项：
+\begin{equation}
+    f(x,y)=\ln x.
+\end{equation}
+
+导出精确解：
+\begin{equation}
+    u(x,y)=\frac{1}{2}x^2\ln x - \frac{3}{4}x^2 + \frac{3}{4}x.
+\end{equation}
+
+使用非均匀网格$x_i=(i/N)^2$，取$\mathcal{P}_1$元。使用预优共轭梯度法 (Preconditioned CG) 求解，用超松弛迭代 (SSOR) 作为预优因子，超松弛系数取 $1.99999999$。
+
+右端项的数值积分由一阶高斯求积公式计算。
+
+\subsection{数值结果}
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|c|c|c|}
+    \hline
+    单元数量                    & $2^{14}$ & 阶数 & $2^{15}$ & 阶数 & $2^{16}$ & 阶数 & $2^{17}$ \\ \hline
+    $||u-u_h||_{L_2}$      & 5.10e-10     & 2.05 & 1.23e-10     & 2.24 & 2.61e-11     & - & 5.47e-11     \\ \hline
+    $||u-u_h||_{L_\infty}$ & 8.42e-10     & 2.04 & 2.05e-10     & 2.04 & 4.98e-11     & - & 9.28e-11     \\ \hline
+    $||u-u_h||_{H_1}$      & 1.76e-05     & 1.00 & 8.81e-06     & 1.00 & 4.40e-06     & 1.00 & 2.20e-06     \\ \hline
+    CG 迭代次数            & 18 & & 19 & & 20 & & 21\\    
+\hline
+    装配耗时 (s)           & 0.024         &      & 0.050          &      & 0.067           &      & 0.14     \\ \hline
+    求解耗时 (s)           & 0.0079         &      & 0.014          &      & 0.031           &      & 0.052     \\ \hline
+    \end{tabular}
+    \caption{\small 预优共轭梯度法，预优因子：SSOR，超松弛系数：$1.99999999$。}
+\end{table}
+
+收敛阶令人满意。由于网格尺寸太细，在机器精度的限制下，$L_2$ 和 $L_\infty$ 范数已经无法继续下降。另外，SSOR 作为预优因子效果非常好，随着网格加密，CG 迭代次数基本不会增加。
+
+为了测试刚度矩阵的条件数对求解性能的影响，我们不使用预优因子再进行一次测试。与预优 CG 相比，朴素 CG 的求解性能大大降低，我们只好将网格规模减小以进行测试。
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|c|c|c|}
+    \hline
+    单元数量                    & $2^{12}$ & 增长率 & $2^{13}$ & 增长率 & $2^{14}$ \\ \hline
+    CG 迭代次数            & 42996 & 2.86 & 122781 & 2.85 & 350164\\    
+\hline
+    装配耗时 (s)           & 0.005          &      & 0.01           &      & 0.02     \\ \hline
+    求解耗时 (s)           & 0.49          &      & 2.35           &      & 12.7     \\ \hline
+    \end{tabular}
+    \caption{\small 朴素共轭梯度法。}
+\end{table}
+
+\appendix
+%\appendixpage
+\addappheadtotoc
+
+\end{document}
