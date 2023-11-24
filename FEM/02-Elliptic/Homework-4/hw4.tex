@@ -11,6 +11,8 @@
 \usepackage{array}
 \usepackage{float}
 \usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{amssymb}
 \newcommand{\ccr}[1]{\makecell{{\color{#1}\rule{1cm}{1cm}}}}
 
 \begin{document}
@@ -25,45 +27,82 @@
 \begin{equation}
     \left\{
         \begin{array}{l}
-            -\Delta u = f,\quad \text{in}\;(0,1),\\
+            -\Delta u = f,\quad \text{in}\;\Omega=(0,1),\\
             u(0) = u(1) = 0.
         \end{array}
     \right.
 \end{equation}
 
-取一个 $L^2$ 可积但在 $0$ 处不连续的右端项：
+取一右端项 $f\in L_\text{loc}^2(\Omega)$：
 \begin{equation}
-    f(x)=\ln x.
+    f(x)=\frac{1}{x}.
 \end{equation}
 
-导出精确解：
+显然 $f$ 在 $0$ 处不连续，且 $f\notin L^2(\Omega)$。我们导出精确解：
 \begin{equation}
-    u(x)=\frac{1}{2}x^2\ln x - \frac{3}{4}x^2 + \frac{3}{4}x.
+    u(x)=x\ln x.
 \end{equation}
 
-使用非均匀网格$x_i=(i/N)^2$，取$\mathcal{P}_1$元。使用预优共轭梯度法 (Preconditioned CG) 求解，用超松弛迭代 (SSOR) 作为预优因子，超松弛系数取 $1.99999999$。
-
+注意到 $u\in H^1(\Omega)\cap C(\overline{\Omega})$。
+使用非均匀网格$x_i=(i/N)^2$，取$\mathcal{P}_1$元。
+使用预优共轭梯度法 (Preconditioned CG) 求解，
+用超松弛迭代 (SSOR) 作为预优因子，
+超松弛系数取 $2-\varepsilon$，其中 $\varepsilon=10^{-12}$。
 右端项的数值积分由一阶高斯求积公式计算。
 
+\subsection{编译说明}
+
+请安装 deal.ii 及其依赖库，见 https://www.dealii.org/developer/readme.html；安装完毕后，在本文档目录下打开终端，依次运行：
+\begin{lstlisting}
+cd src-p1
+mkdir build
+cd build
+cmake ..
+make release
+make
+\end{lstlisting}
+等待编译完成后，用以下命令执行测试：
+\begin{lstlisting}
+./elliptic 10 u
+\end{lstlisting}
+上述测试采用 1.1 节所述的非均匀网格，规模为 $N=2^{10}$，如果需要改变网格规模，将 \verb|10| 换成别的正整数即可。另外，如果想测试均匀网格，只需将上述命令中的 \verb|u| 删去即可。
+
 \subsection{数值结果}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=0.9\linewidth]{png/p1-solution}
+        \caption{\small $N=2^{14}$ 时非均匀网格的数值解 $u_h$}
+    \end{minipage}
+    \hspace{1em}
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=0.9\linewidth]{png/p1-error}
+        \caption{\small $N=2^{14}$ 时非均匀网格的误差 $u_h-u$}
+    \end{minipage}
+\end{figure}
+
+可以看到，误差集中在奇异点附近。
 
 \begin{table}[H]
     \centering
     \begin{tabular}{|c|c|c|c|c|c|c|c|}
     \hline
     单元数量                    & $2^{14}$ & 阶数 & $2^{15}$ & 阶数 & $2^{16}$ & 阶数 & $2^{17}$ \\ \hline
-    $||u-u_h||_{L_2}$      & 5.10e-10     & 2.05 & 1.23e-10     & 2.24 & 2.61e-11     & - & 5.47e-11     \\ \hline
-    $||u-u_h||_{L_\infty}$ & 8.42e-10     & 2.04 & 2.05e-10     & 2.04 & 4.98e-11     & - & 9.28e-11     \\ \hline
-    $||u-u_h||_{H_1}$      & 1.76e-05     & 1.00 & 8.81e-06     & 1.00 & 4.40e-06     & 1.00 & 2.20e-06     \\ \hline
-    CG 迭代次数            & 18 & & 19 & & 20 & & 21\\    
+    $||u-u_h||_{L_2}$      & 1.90e-09     & 1.92 & 5.02e-10     & 1.51 & 1.76e-10     & 2.16 & 3.95e-11     \\ \hline
+    $||u-u_h||_{L_\infty}$ & 2.91e-09     & 2.00 & 7.30e-10     & 1.59 & 2.42e-10     & 1.18 & 1.07e-10     \\ \hline
+    $||u-u_h||_{H_1}$      & 1.60e-04     & 0.96 & 8.24e-05     & 0.96 & 4.25e-05     & 0.96 & 2.19e-05     \\ \hline
+    CG 迭代次数            & 14 & & 16 & & 17 & & 19\\    
 \hline
-    装配耗时 (s)           & 0.024         &      & 0.050          &      & 0.067           &      & 0.14     \\ \hline
-    求解耗时 (s)           & 0.0079         &      & 0.014          &      & 0.031           &      & 0.052     \\ \hline
+    装配耗时 (s)           & 0.019         &      & 0.035          &      & 0.072           &      & 0.15     \\ \hline
+    求解耗时 (s)           & 0.0051         &      & 0.010          &      & 0.024           &      & 0.048     \\ \hline
     \end{tabular}
-    \caption{\small 预优共轭梯度法，预优因子：SSOR，超松弛系数：$1.99999999$。}
+    \caption{\small 预优共轭梯度法，预优因子：SSOR，超松弛系数：$2-\varepsilon\;(\varepsilon=10^{-12})$。}
 \end{table}
 
-收敛阶令人满意。由于网格尺寸太细，在机器精度的限制下，$L_2$ 和 $L_\infty$ 范数已经无法继续下降。另外可以看到，SSOR 作为预优因子效果非常好，随着网格加密，CG 迭代次数基本不会增加。换言之，当超松弛系数趋近于 $2$ 时，在 SSOR 的作用下，迭代矩阵的条件数与网格尺寸几乎无关。
+由于网格尺寸太细，在机器精度的限制下，$L_2$ 和 $L_\infty$ 范数已经无法继续下降。另外可以看到，SSOR 作为预优因子效果非常好，随着网格加密，CG 迭代次数基本不会增加。换言之，当超松弛系数趋近于 $2$ 时，在 SSOR 的作用下，迭代矩阵的条件数与网格尺寸几乎无关。
 
 刚度矩阵条件数（二范数下）的数值结果如下，数值结果支持 $\kappa(A)\sim O(N^3)$：
 

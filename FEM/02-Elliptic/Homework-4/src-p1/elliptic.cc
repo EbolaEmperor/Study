@@ -43,21 +43,21 @@ public:
   double value(const Point<1> & p, const unsigned int component = 0) const override{
     (void)component;
     if(p[0]<=0.) return 0.;
-    return .5*p[0]*p[0]*log(p[0]) - .75*p[0]*p[0] + .75*p[0];
-  };
+    return p[0]*log(p[0]); //.5*p[0]*p[0]*log(p[0]) - .75*p[0]*p[0] + .75*p[0];
+  }
 
   virtual Tensor<1, 1>
   gradient(const Point<1> & p, const unsigned int component = 0) const override{
     (void)component;
     Tensor<1, 1> grad;
     if(p[0]<=0.) grad[0] = .75;
-    else grad[0] = p[0]*log(p[0]) - p[0] + .75;
+    else grad[0] = log(p[0]) + 1.; //p[0]*log(p[0]) - p[0] + .75;
     return grad;
-  };
+  }
 };
 
 double f(const double &x){
-  return -log(x);
+  return -1./x;
 }
 
 class Elliptic{
@@ -186,7 +186,7 @@ void Elliptic::solve()
   SolverCG<Vector<double>> solver(solver_control);
 
   PreconditionSSOR<SparseMatrix<double>> preconditioner;
-  preconditioner.initialize(system_matrix, 1.99999999);
+  preconditioner.initialize(system_matrix, 1.999999999999);
 
   solver.solve(system_matrix, solution, system_rhs, preconditioner);
   std::cout << "   " << solver_control.last_step()
@@ -203,9 +203,10 @@ void Elliptic::solve()
 void Elliptic::output_results() const
 {
   std::ofstream fout("result.txt");
-  fout << mesh_points << std::endl;
-  fout << solution << std::endl;
-  fout << error << std::endl;
+  for(unsigned i = 0; i < solution.size(); i++)
+    fout << mesh_points[i] << " " 
+         << solution[i] << " " 
+         << error[i] << std::endl;
 
   Vector<double> difference_per_cell(triangulation.n_active_cells());
   difference_per_cell.reinit(triangulation.n_active_cells());
@@ -276,7 +277,7 @@ void Elliptic::run()
   std::cout << "Computing error and outputing time: " << timer_output() << std::endl;
 }
 
- 
+
 int main(int argc, char* argv[])
 {
   if(argc < 2){
