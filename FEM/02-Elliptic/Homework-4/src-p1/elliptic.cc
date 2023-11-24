@@ -43,15 +43,15 @@ public:
   double value(const Point<1> & p, const unsigned int component = 0) const override{
     (void)component;
     if(p[0]<=0.) return 0.;
-    return p[0]*log(p[0]); //.5*p[0]*p[0]*log(p[0]) - .75*p[0]*p[0] + .75*p[0];
+    return p[0]*log(p[0]);
   }
 
   virtual Tensor<1, 1>
   gradient(const Point<1> & p, const unsigned int component = 0) const override{
     (void)component;
     Tensor<1, 1> grad;
-    if(p[0]<=0.) grad[0] = .75;
-    else grad[0] = log(p[0]) + 1.; //p[0]*log(p[0]) - p[0] + .75;
+    if(p[0]<=0.) grad[0] = 1.;
+    else grad[0] = log(p[0]) + 1.;
     return grad;
   }
 };
@@ -117,6 +117,7 @@ void Elliptic::make_grid(){
 
 void Elliptic::setup_system(){
   dof_handler.distribute_dofs(fe);
+  std::cout << "   " << dof_handler.n_dofs() << " DoF numbers." << std::endl;
 
   constraints.clear();
   VectorTools::interpolate_boundary_values(dof_handler,
@@ -128,11 +129,6 @@ void Elliptic::setup_system(){
                                            Functions::ZeroFunction<1>(),
                                            constraints);
   constraints.close();
-
-  dof_location_map = DoFTools::map_dofs_to_support_points(MappingFE<1>(fe), dof_handler);
-  std::ofstream dof_location_file("dof-locations.gnuplot");
-  DoFTools::write_gnuplot_dof_support_point_info(dof_location_file,
-                                                 dof_location_map);
 
   DynamicSparsityPattern dynamic_sparsity_pattern(dof_handler.n_dofs(),
                                                   dof_handler.n_dofs());
@@ -259,7 +255,7 @@ void Elliptic::run()
 {
   CPUTimer timer_mg;
   make_grid();
-  std::cout << "Makeing-grid time: " << timer_mg() << std::endl;
+  std::cout << "Making-grid time: " << timer_mg() << std::endl;
 
   CPUTimer timer_assemble;
   setup_system();

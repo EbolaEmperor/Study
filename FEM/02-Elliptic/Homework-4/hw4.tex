@@ -27,28 +27,28 @@
 \begin{equation}
     \left\{
         \begin{array}{l}
-            -\Delta u = f,\quad \text{in}\;\Omega=(0,1),\\
+            -u'' = f,\quad \text{in}\;\Omega=(0,1),\\
             u(0) = u(1) = 0.
         \end{array}
     \right.
 \end{equation}
-
 取一右端项 $f\in L_\text{loc}^2(\Omega)$：
 \begin{equation}
     f(x)=\frac{1}{x}.
 \end{equation}
-
 显然 $f$ 在 $0$ 处不连续，且 $f\notin L^2(\Omega)$。我们导出精确解：
 \begin{equation}
     u(x)=x\ln x.
 \end{equation}
-
 注意到 $u\in H^1(\Omega)\cap C(\overline{\Omega})$。
 使用非均匀网格$x_i=(i/N)^2$，取$\mathcal{P}_1$元。
 使用预优共轭梯度法 (Preconditioned CG) 求解，
 用超松弛迭代 (SSOR) 作为预优因子，
 超松弛系数取 $2-\varepsilon$，其中 $\varepsilon=10^{-12}$。
 右端项的数值积分由一阶高斯求积公式计算。
+注意：对于 $x_0=0$ 的节点基函数 $\Phi_0$，我们知道
+$\langle f, \Phi_0 \rangle$ 是发散的，
+但在 Dirichlet 边界条件下，我们不需要这一项。
 
 \subsection{编译说明}
 
@@ -130,6 +130,35 @@ make
     \end{tabular}
     \caption{\small 朴素共轭梯度法。}
 \end{table}
+
+\section{编程第二题}
+
+\subsection{求解设置}
+
+求解PDE
+\begin{equation}
+    \left\{
+        \begin{array}{l}
+            -u'' + u = f,\quad \text{in}\;\Omega=(0,1),\\
+            u'(0) = u'(1) = 0.
+        \end{array}
+    \right.
+\end{equation}
+取精确解：
+\begin{equation}
+    u(x)=\cos(\pi x).
+\end{equation}
+导出右端项：
+\begin{equation}
+    f(x)=(1+\pi^2)\cos(\pi x).
+\end{equation}
+其余设置与题目所述一致。
+
+\subsection{编译说明}
+
+由于 deal.ii 的多重网格与题目所述的 big Gauss-Seidel 有所不同，
+为了按题目要求来实现，在这题中我们不再使用 deal.ii，
+而是使用 matlab，所以无需编译，直接运行即可。
 
 \appendix
 %\appendixpage
