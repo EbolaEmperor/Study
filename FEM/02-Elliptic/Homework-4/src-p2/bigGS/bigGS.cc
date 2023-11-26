@@ -245,7 +245,7 @@ void solve()
   SolverControl  solver_control(50000000, 1e-12);
   SolverRelaxation<Vector<double>>  solver(solver_control);
 
-  // The SOR iteration with coefficient 1.0 is indeed Gauss-Seidel.
+  // The SOR method with coefficient 1.0 is indeed Gauss-Seidel.
   PreconditionSOR<SparseMatrix<double>> preconditioner;
   preconditioner.initialize(system_matrix, 1.0);
 

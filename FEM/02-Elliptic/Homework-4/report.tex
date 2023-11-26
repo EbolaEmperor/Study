@@ -217,6 +217,8 @@ make
 
 \subsection{测试结果}
 
+起初，我们使用了 big Gauss-Seidel 迭代，取得了如下结果。
+
 \begin{figure}[H]
     \centering
     \begin{minipage}[t]{0.48\textwidth}
@@ -236,18 +238,24 @@ make
 \begin{equation}
     ||e_h|| = \sqrt {\frac{1}{N_5+1} \sum_{k=0}^{N_5} e_h^2(x_{5,k})}.
 \end{equation}
-结果如下表。
+结果如下表。然而，Gauss-Seidel 的计算时间过长，
+我们不愿浪费计算资源继续计算，
+故在超过 4h 之后将计算进程终止。
+另外，我们也尝试
+将 $\mathcal{T}_1,...,\mathcal{T}_5$ 五层网格离散出的 big 方程组
+用 symmetric SSOR 求解，结果一并列出。
 
 \begin{table}[H]
     \centering
     \begin{tabular}{|c|c|c|c|c|c|c|c|}
     \hline
-                        & 离散 $L_2$ 误差 & 迭代次数 & 求解耗时 (s)\\ \hline
-    Gauss-Seidel            &  &  & \\
+                        & 离散 $L_2$ 误差 & 迭代次数 & 求解耗时 \\ \hline
+    Gauss-Seidel            &  &  & >4h \\
 \hline
-    big Gauss-Seidel           & 2.21e-10 & 316344 & 211\\ \hline
+    big Gauss-Seidel           & 2.21e-10 & 316344 & 211s\\ \hline
+    big symmetric SSOR     &   2.22e-10 & 41060 & 47s\\ \hline
     \end{tabular}
-    \caption{\small 两种方法的效率对比}
+    \caption{\small GS 和 big GS 的效率对比}
 \end{table}
 
 \appendix
