@@ -52,8 +52,8 @@
 
 using namespace dealii;
 
-const unsigned Raynolds = 1000;
-const double diffusion_coefficient = 1.0 / Raynolds;
+double max_velocity = 6.0;
+const double diffusion_coefficient = 1e-3;
 
 //--------------------------Data Structures for MG--------------------------
 
@@ -114,9 +114,8 @@ double InflowBoundaryTerm<dim>::value(const Point<dim> & p,
                                   const unsigned int component) const
 {
   (void)component;
-  static const double Um = 6.0;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return Um * p[1] * (0.41-p[1]) / (0.41 * 0.41) * (1.0 - exp(-10.0 * this->get_time()));
+  return max_velocity * p[1] * (0.41-p[1]) / (0.41 * 0.41) * (1.0 - exp(-10.0 * this->get_time()));
 }
 
 
@@ -133,9 +132,8 @@ double InflowBoundaryTermDt<dim>::value(const Point<dim> & p,
                                   const unsigned int component) const
 {
   (void)component;
-  static const double Um = 6.0;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return Um * p[1] * (0.41-p[1]) / (0.41 * 0.41) * 10.0 * exp(-10.0 * this->get_time());
+  return max_velocity * p[1] * (0.41-p[1]) / (0.41 * 0.41) * 10.0 * exp(-10.0 * this->get_time());
 }
 
 
@@ -222,7 +220,7 @@ INSE<dim>::INSE
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(4e-4)
+  , time_step((level<=5) ? 4e-4 : 5e-5)
 {}
 
 
@@ -416,7 +414,7 @@ void INSE<dim>::output_result(const bool force_output)
 template <int dim>
 void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
 {
-  SolverControl            solver_control(2000, ispressure ? 1e-8 : 1e-12);
+  SolverControl            solver_control(2000, ispressure ? 1e-8*max_velocity/6. : 1e-12);
   SolverCG<Vector<double>> solver(solver_control);
 
   if(!ispressure)
@@ -428,7 +426,7 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     MGTransferPrebuilt<Vector<double>> mg_transfer(mg_constrained_dofs);
     mg_transfer.build(dof_handler);
 
-    SolverControl coarse_solver_control(5000, 1e-9, false, false);
+    SolverControl coarse_solver_control(5000, 1e-9*max_velocity/6., false, false);
     SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
     PreconditionIdentity id;
     MGCoarseGridIterativeSolver<Vector<double>,
@@ -897,6 +895,9 @@ void INSE<dim>::update_pressure(
 
 template <int dim>
 void INSE<dim>::run(){
+  if(fabs(max_velocity-6.) > 1e-10)
+    time_step /= max_velocity/6. * 2;
+
   Vector<double> tmp;
   Vector<double> middle_solution_u1;
   Vector<double> middle_solution_u2;
@@ -1036,14 +1037,18 @@ void INSE<dim>::run(){
 
 
 int main(int argc, const char *argv[]){
-  if(argc != 3){
+  if(argc < 3){
     std::cerr << "Param error! Please run with command" << std::endl;
-    std::cerr << "./convection-diffusion N T" << std::endl;
-    std::cerr << "where N is the level of base grid, T is end_time." << std::endl;
+    std::cerr << "./convection-diffusion N T [Um]" << std::endl;
+    std::cerr << "where N is the level of base grid, T is end_time, Um is the scale of max-velocity." << std::endl;
+    std::cerr << "[default: Um=1.0]." << std::endl;
+    std::cerr << "Note 1: max-velocity=6*Um, hence the velocity at the center-line is 1.5*Um." << std::endl;
+    std::cerr << "Note 2: The proposed number of N is 5 if Um<=10. For lager Um, you will need larger N." << std::endl;
     return -1;
   }
   int level = std::stoi(argv[1]);
   double end_time = std::stod(argv[2]);
+  if(argc==4) max_velocity *= std::stod(argv[3]);
   INSE<2> inse(level, end_time);
   inse.run();
   return 0;
