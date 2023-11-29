@@ -49,6 +49,19 @@
 
 #include <fstream>
 #include <iostream>
+#include <chrono>
+
+struct CPUTimer
+{
+  using HRC = std::chrono::high_resolution_clock;
+  std::chrono::time_point<HRC>  start;
+  CPUTimer() { reset(); }
+  void reset() { start = HRC::now(); }
+  double operator() () const {
+    std::chrono::duration<double> e = HRC::now() - start;
+    return e.count();
+  }
+};
 
 using namespace dealii;
 
@@ -187,6 +200,7 @@ private:
   MGLevelObject<SparseMatrix<double>> mg_matrices;
   MGLevelObject<SparseMatrix<double>> mg_interface_matrices;
   MGConstrainedDoFs                   mg_constrained_dofs;
+  MGTransferPrebuilt<Vector<double>>  mg_transfer;
 
   Vector<double> convection_u1;
   Vector<double> convection_u2;
@@ -211,7 +225,6 @@ private:
 
 //---------------------------------Solver Implemention-----------------------------------
 
-
 template <int dim>
 INSE<dim>::INSE
   (const int &N, const double &T)
@@ -220,7 +233,7 @@ INSE<dim>::INSE
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step((level<=5) ? 4e-4 : 5e-5)
+  , time_step((level<=5) ? 2e-4/(1<<level)*32. : 5e-5)
 {}
 
 
@@ -414,7 +427,8 @@ void INSE<dim>::output_result(const bool force_output)
 template <int dim>
 void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
 {
-  SolverControl            solver_control(2000, ispressure ? 1e-8*max_velocity/6. : 1e-12);
+  CPUTimer timer;
+  SolverControl            solver_control(2000, ispressure ? 1e-7*max_velocity/6. : 1e-12);
   SolverCG<Vector<double>> solver(solver_control);
 
   if(!ispressure)
@@ -423,10 +437,7 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     preconditioner.initialize(system_matrix, 1.0);
     solver.solve(system_matrix, solution, system_rhs, preconditioner);
   } else {
-    MGTransferPrebuilt<Vector<double>> mg_transfer(mg_constrained_dofs);
-    mg_transfer.build(dof_handler);
-
-    SolverControl coarse_solver_control(5000, 1e-9*max_velocity/6., false, false);
+    SolverControl coarse_solver_control(5000, 1e-8*max_velocity/6., false, false);
     SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
     PreconditionIdentity id;
     MGCoarseGridIterativeSolver<Vector<double>,
@@ -438,7 +449,7 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     using Smoother = PreconditionChebyshev<SparseMatrix<double>, Vector<double>>;
     mg::SmootherRelaxation<Smoother, Vector<double>> mg_smoother;
     mg_smoother.initialize(mg_matrices);
-    mg_smoother.set_steps(2);
+    mg_smoother.set_steps(1);
     mg_smoother.set_symmetric(true);
 
     mg::Matrix<Vector<double>> mg_matrix(mg_matrices);
@@ -460,7 +471,7 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
   }
 
   std::cout << "   " << solver_control.last_step()
-            << " CG iterations." << std::endl;
+            << " CG iterations, in " << timer() << "s." << std::endl;
 }
 
 template <int dim>
@@ -685,6 +696,9 @@ void INSE<dim>::assemble_multigrid()
                         scratch_data,
                         CopyData(),
                         MeshWorker::assemble_own_cells);
+  
+  mg_transfer.initialize_constraints(mg_constrained_dofs);
+  mg_transfer.build(dof_handler);
 }
 
 
@@ -723,15 +737,15 @@ void INSE<dim>::setup_convection
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
-        double weight = fe_values.JxW(q_index);
+        const double weight = fe_values.JxW(q_index);
+        const double v1 = grad_u1_q_point[q_index][0] * u1_q_point[q_index] + 
+                          grad_u1_q_point[q_index][1] * u2_q_point[q_index];
+        const double v2 = grad_u2_q_point[q_index][0] * u1_q_point[q_index] + 
+                          grad_u2_q_point[q_index][1] * u2_q_point[q_index];
         for (const unsigned int i : fe_values.dof_indices())
         {
-          cell_convection_u1(i) += weight * fe_values.shape_value(i, q_index) * 
-                                  ( grad_u1_q_point[q_index][0] * u1_q_point[q_index] + 
-                                    grad_u1_q_point[q_index][1] * u2_q_point[q_index]);
-          cell_convection_u2(i) += weight * fe_values.shape_value(i, q_index) * 
-                                  ( grad_u2_q_point[q_index][0] * u1_q_point[q_index] + 
-                                    grad_u2_q_point[q_index][1] * u2_q_point[q_index]);
+          cell_convection_u1(i) += weight * fe_values.shape_value(i, q_index) * v1;
+          cell_convection_u2(i) += weight * fe_values.shape_value(i, q_index) * v2;
         }
       }
 
@@ -842,17 +856,14 @@ void INSE<dim>::update_pressure(
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
-        double weight = fe_values.JxW(q_index);
+        const double weight = fe_values.JxW(q_index);
+        Tensor<1,dim> v;
+        v[0] = grad_u1_q_point[q_index][0] * u1_q_point[q_index] + 
+               grad_u1_q_point[q_index][1] * u2_q_point[q_index];
+        v[1] = grad_u2_q_point[q_index][0] * u1_q_point[q_index] + 
+               grad_u2_q_point[q_index][1] * u2_q_point[q_index];
         for (const unsigned int i : fe_values.dof_indices())
-        {
-          auto grad = fe_values.shape_grad(i, q_index);
-          cell_rhs(i)    -= weight * grad[0] * 
-                                  ( grad_u1_q_point[q_index][0] * u1_q_point[q_index] + 
-                                    grad_u1_q_point[q_index][1] * u2_q_point[q_index])
-                          + weight * grad[1] * 
-                                  ( grad_u2_q_point[q_index][0] * u1_q_point[q_index] + 
-                                    grad_u2_q_point[q_index][1] * u2_q_point[q_index]);
-        }
+          cell_rhs(i) -= weight * fe_values.shape_grad(i, q_index) * v;
       }
 
       for (const auto &f : cell->face_iterators()){
@@ -933,6 +944,7 @@ void INSE<dim>::run(){
                            prev_solution_u2);
   solution_u1 = prev_solution_u1;
   solution_u2 = prev_solution_u2;
+  CPUTimer timer;
 
   while(time <= end_time){
     // ------------------------------first stage-------------------------------------
@@ -943,6 +955,8 @@ void INSE<dim>::run(){
     time += time_step;
     timestep_number++;
     make_constraints_u1(time);
+    std::cout << "Time-step total time: " << timer() << "s." << std::endl;
+    timer.reset();
     std::cout << std::endl << "Time step " << timestep_number << " at t=" << time << std::endl;
 
     setup_grad_pressure();
