@@ -46,6 +46,7 @@
 #include <deal.II/multigrid/mg_matrix.h>
 
 #include <deal.II/meshworker/mesh_loop.h>
+#include <omp.h>
 
 #include <fstream>
 #include <iostream>
@@ -65,6 +66,7 @@ struct CPUTimer
 
 using namespace dealii;
 
+const int n_thr = 8;
 double max_velocity = 6.0;
 const double diffusion_coefficient = 1e-3;
 
@@ -710,6 +712,10 @@ void INSE<dim>::setup_convection
   convection_u2.reinit(solution_u1.size());
 
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
+
+#pragma omp parallel for
+for(int th = 0; th < n_thr; th++)
+{
   Vector<double> cell_convection_u1(dofs_per_cell);
   Vector<double> cell_convection_u2(dofs_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -723,9 +729,12 @@ void INSE<dim>::setup_convection
   std::vector<double> u2_q_point(quadrature_formula.size());
   std::vector<Tensor<1,dim>> grad_u1_q_point(quadrature_formula.size());
   std::vector<Tensor<1,dim>> grad_u2_q_point(quadrature_formula.size());
+  int cnt = 0;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
+      cnt++;
+      if(cnt % n_thr != th) continue;
       cell_convection_u1 = 0.;
       cell_convection_u2 = 0.;
 
@@ -758,6 +767,7 @@ void INSE<dim>::setup_convection
       }
     }
 }
+}
 
 
 template <int dim>
@@ -767,6 +777,10 @@ void INSE<dim>::setup_grad_pressure()
   grad_pressure_u2.reinit(solution_u1.size());
 
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
+
+#pragma omp parallel for
+for(int th = 0; th < n_thr; th++)
+{
   Vector<double> cell_rhs_u1(dofs_per_cell);
   Vector<double> cell_rhs_u2(dofs_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -777,9 +791,12 @@ void INSE<dim>::setup_grad_pressure()
                           update_values | update_gradients |
                           update_JxW_values);
   std::vector<Tensor<1,dim>> grad_pressure_q_point(quadrature_formula.size());
+  int cnt = 0;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
+      cnt++;
+      if(cnt % n_thr != th) continue;
       cell_rhs_u1 = 0.;
       cell_rhs_u2 = 0.;
       fe_values.reinit(cell);
@@ -806,6 +823,7 @@ void INSE<dim>::setup_grad_pressure()
       }
     }
 }
+}
 
 
 template <int dim>
@@ -816,6 +834,13 @@ void INSE<dim>::update_pressure(
   system_rhs.reinit(solution_u1.size());
 
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
+
+  std::vector<Vector<double>> system_rhs_th(n_thr);
+
+#pragma omp parallel for
+for(int th = 0; th < n_thr; th++)
+{
+  system_rhs_th[th].reinit(system_rhs.size());
   Vector<double> cell_rhs(dofs_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -843,9 +868,12 @@ void INSE<dim>::update_pressure(
 
   InflowBoundaryTermDt<dim> boundary_dt;
   boundary_dt.set_time(time);
+  int cnt = 0;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
+      cnt++;
+      if(cnt % n_thr != th) continue;
       cell_rhs = 0.;
       fe_values.reinit(cell);
       fe_values.get_function_values(u1, u1_q_point);
@@ -895,8 +923,14 @@ void INSE<dim>::update_pressure(
       // distribute to global
       cell->get_dof_indices(local_dof_indices);
       for (const unsigned int i : fe_values.dof_indices())
-        system_rhs[local_dof_indices[i]] += cell_rhs(i);
+        system_rhs_th[th][local_dof_indices[i]] += cell_rhs(i);
     }
+}
+
+  for(unsigned i = 0; i < system_rhs_th.size(); i++)
+  {
+    system_rhs += system_rhs_th[i];
+  }
   
   constraints_pressure.condense(system_matrix_pressure, system_rhs);
   solve_time_step(pressure, true);
@@ -1051,6 +1085,7 @@ void INSE<dim>::run(){
 
 
 int main(int argc, const char *argv[]){
+  omp_set_num_threads(n_thr);
   if(argc < 3){
     std::cerr << "Param error! Please run with command" << std::endl;
     std::cerr << "./convection-diffusion N T [Um]" << std::endl;
