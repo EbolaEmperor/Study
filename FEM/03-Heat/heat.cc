@@ -288,8 +288,8 @@ void HeatEquation<dim>::setup_system()
 
 template <int dim>
 void HeatEquation<dim>::run(){
-  const unsigned initial_global_refinement = 1;
-  const unsigned n_adaptive_pre_refinement_steps = 3;
+  const unsigned initial_global_refinement = 3;
+  const unsigned n_adaptive_pre_refinement_steps = 4;
   Vector<double> tmp;
   Vector<double> forcing_terms;
   double end_time = 1.0;
