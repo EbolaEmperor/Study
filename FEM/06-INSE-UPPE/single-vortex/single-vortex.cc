@@ -8,6 +8,7 @@
 // Space discretization: Q2 element (2nd order in H1)
 //----------------------------------------------------------
 
+#include <omp.h>
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/function.h>
@@ -50,12 +51,26 @@
 
 #include <fstream>
 #include <iostream>
+#include <chrono>
+
+struct CPUTimer
+{
+  using HRC = std::chrono::high_resolution_clock;
+  std::chrono::time_point<HRC>  start;
+  CPUTimer() { reset(); }
+  void reset() { start = HRC::now(); }
+  double operator() () const {
+    std::chrono::duration<double> e = HRC::now() - start;
+    return e.count();
+  }
+};
 
 using namespace dealii;
 
 #define NO_FORCING_TERM
 #define OUTPUT_CG_ITERATIONS
 
+const int n_thr = 6;
 const double diffusion_coefficient = 3.4e-6;
 
 //--------------------------Data Structures for MG--------------------------
@@ -167,7 +182,7 @@ double Initial1<dim>::value(const Point<dim> & p,
       double v2 = (rv2 < R) ? 
                   (0.5*rv2 - 4.0*rv2*rv2*rv2) : 
                   R / rv2 * RR;
-      res += v2 * dp2[1] / rv2;
+      res -= v2 * dp2[1] / rv2;
     }
   }
   return res;
@@ -203,7 +218,7 @@ double Initial2<dim>::value(const Point<dim> & p,
       double v2 = (rv2 < R) ? 
                   (0.5*rv2 - 4.0*rv2*rv2*rv2) : 
                   R / rv2 * RR;
-      res -= v2 * dp2[0] / rv2;
+      res += v2 * dp2[0] / rv2;
     }
   }
   return res;
@@ -303,7 +318,7 @@ INSE<dim>::INSE
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(1e-2 / (1<<level) * 256.)
+  , time_step(2e-3 / (1<<level) * 256.)
   , region(region)
   , offset(offset)
 {}
@@ -653,6 +668,16 @@ void INSE<dim>::setup_convection
 #endif
 
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
+  
+  std::vector<Vector<double>> convection_u1_th(n_thr);
+  std::vector<Vector<double>> convection_u2_th(n_thr);
+
+#pragma omp parallel for
+for(int th = 0; th < n_thr; th++)
+{
+  convection_u1_th[th].reinit(solution_u1.size());
+  convection_u2_th[th].reinit(solution_u1.size());
+  
   Vector<double> cell_convection_u1(dofs_per_cell);
   Vector<double> cell_convection_u2(dofs_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -666,9 +691,12 @@ void INSE<dim>::setup_convection
   std::vector<double> u2_q_point(quadrature_formula.size());
   std::vector<Tensor<1,dim>> grad_u1_q_point(quadrature_formula.size());
   std::vector<Tensor<1,dim>> grad_u2_q_point(quadrature_formula.size());
+  int cnt = 0;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
+      cnt++;
+      if(cnt % n_thr != th) continue;
       cell_convection_u1 = 0.;
       cell_convection_u2 = 0.;
 
@@ -697,10 +725,17 @@ void INSE<dim>::setup_convection
       cell->get_dof_indices(local_dof_indices);
       for (const unsigned int i : fe_values.dof_indices())
       {
-        convection_u1[local_dof_indices[i]] += cell_convection_u1[i];
-        convection_u2[local_dof_indices[i]] += cell_convection_u2[i];
+        convection_u1_th[th][local_dof_indices[i]] += cell_convection_u1[i];
+        convection_u2_th[th][local_dof_indices[i]] += cell_convection_u2[i];
       }
     }
+}
+
+  for(int th = 0; th < n_thr; th++)
+  {
+    convection_u1 += convection_u1_th[th];
+    convection_u2 += convection_u2_th[th];
+  }
 }
 
 
@@ -711,6 +746,16 @@ void INSE<dim>::setup_grad_pressure()
   grad_pressure_u2.reinit(solution_u1.size());
 
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
+
+  std::vector<Vector<double>> grad_pressure_u1_th(n_thr);
+  std::vector<Vector<double>> grad_pressure_u2_th(n_thr);
+
+#pragma omp parallel for
+for(int th = 0; th < n_thr; th++)
+{
+  grad_pressure_u1_th[th].reinit(solution_u1.size());
+  grad_pressure_u2_th[th].reinit(solution_u1.size());
+  
   Vector<double> cell_rhs_u1(dofs_per_cell);
   Vector<double> cell_rhs_u2(dofs_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -721,9 +766,12 @@ void INSE<dim>::setup_grad_pressure()
                           update_values | update_gradients |
                           update_JxW_values);
   std::vector<Tensor<1,dim>> grad_pressure_q_point(quadrature_formula.size());
+  int cnt = 0;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
+      cnt++;
+      if(cnt % n_thr != th) continue;
       cell_rhs_u1 = 0.;
       cell_rhs_u2 = 0.;
       fe_values.reinit(cell);
@@ -745,10 +793,17 @@ void INSE<dim>::setup_grad_pressure()
       cell->get_dof_indices(local_dof_indices);
       for (const unsigned int i : fe_values.dof_indices())
       {
-        grad_pressure_u1[local_dof_indices[i]] += cell_rhs_u1(i);
-        grad_pressure_u2[local_dof_indices[i]] += cell_rhs_u2(i);
+        grad_pressure_u1_th[th][local_dof_indices[i]] += cell_rhs_u1(i);
+        grad_pressure_u2_th[th][local_dof_indices[i]] += cell_rhs_u2(i);
       }
     }
+}
+
+  for(int th = 0; th < n_thr; th++)
+  {
+    grad_pressure_u1 += grad_pressure_u1_th[th];
+    grad_pressure_u2 += grad_pressure_u2_th[th];
+  }
 }
 
 
@@ -760,6 +815,13 @@ void INSE<dim>::update_pressure(
   system_rhs.reinit(solution_u1.size());
 
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
+  
+  std::vector<Vector<double>> system_rhs_th(n_thr);
+
+#pragma omp parallel for
+for(int th = 0; th < n_thr; th++)
+{
+  system_rhs_th[th].reinit(system_rhs.size());
   Vector<double> cell_rhs(dofs_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -783,9 +845,12 @@ void INSE<dim>::update_pressure(
 
   std::vector<Tensor<1,dim>> grad_u1_face_q_point(quadrature_formula_face.size());
   std::vector<Tensor<1,dim>> grad_u2_face_q_point(quadrature_formula_face.size());
+  int cnt = 0;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
+      cnt++;
+      if(cnt % n_thr != th) continue;
       cell_rhs = 0.;
       fe_values.reinit(cell);
       fe_values.get_function_values(u1, u1_q_point);
@@ -834,8 +899,14 @@ void INSE<dim>::update_pressure(
       // distribute to global
       cell->get_dof_indices(local_dof_indices);
       for (const unsigned int i : fe_values.dof_indices())
-        system_rhs[local_dof_indices[i]] += cell_rhs(i);
+        system_rhs_th[th][local_dof_indices[i]] += cell_rhs(i);
     }
+}
+
+  for(unsigned i = 0; i < system_rhs_th.size(); i++)
+  {
+    system_rhs += system_rhs_th[i];
+  }
   
   constraints_pressure.condense(system_matrix_pressure, system_rhs);
   solve_time_step(pressure, true);
@@ -961,18 +1032,23 @@ void INSE<dim>::run(){
                            initial_2,
                            prev_solution_u2);
   
-  pre_projections(prev_solution_u1, prev_solution_u2, 10);
+  pre_projections(prev_solution_u1, prev_solution_u2, 20);
   solution_u1 = prev_solution_u1;
   solution_u2 = prev_solution_u2;
+  CPUTimer timer;
 
   while(time <= end_time){
     // ------------------------------first stage-------------------------------------
     setup_convection(prev_solution_u1, prev_solution_u2);
     update_pressure(prev_solution_u1, prev_solution_u2);
     output_result();
+    
+    if(timestep_number==100000) time_step *= 2;
 
     time += time_step;
     timestep_number++;
+    std::cout << "Time-step total time: " << timer() << "s." << std::endl;
+    timer.reset();
     std::cout << std::endl << "Time step " << timestep_number << " at t=" << time << std::endl;
 
     setup_grad_pressure();
@@ -1067,10 +1143,11 @@ void INSE<dim>::run(){
 
 
 int main(int argc, const char *argv[]){
+  omp_set_num_threads(n_thr);
   if(argc < 3)
   {
     std::cerr << "Param error! Please run with command" << std::endl;
-    std::cerr << "./single-vortex N T [1/2/3] [offset]" << std::endl;
+    std::cerr << "./single-vortex N T [1/2/3/4] [offset]" << std::endl;
     std::cerr << "where N is the level of grid, T is end_time. the option argument is for the region." << std::endl;
     return -1;
   }
