@@ -182,7 +182,7 @@ double Initial1<dim>::value(const Point<dim> & p,
       double v2 = (rv2 < R) ? 
                   (0.5*rv2 - 4.0*rv2*rv2*rv2) : 
                   R / rv2 * RR;
-      res -= v2 * dp2[1] / rv2;
+      res += v2 * dp2[1] / rv2;
     }
   }
   return res;
