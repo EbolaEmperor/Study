@@ -218,7 +218,7 @@ double Initial2<dim>::value(const Point<dim> & p,
       double v2 = (rv2 < R) ? 
                   (0.5*rv2 - 4.0*rv2*rv2*rv2) : 
                   R / rv2 * RR;
-      res += v2 * dp2[0] / rv2;
+      res -= v2 * dp2[0] / rv2;
     }
   }
   return res;
@@ -318,7 +318,7 @@ INSE<dim>::INSE
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(2e-3 / (1<<level) * 256.)
+  , time_step(1e-2 / (1<<level) * 256.)
   , region(region)
   , offset(offset)
 {}
