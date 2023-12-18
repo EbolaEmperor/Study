@@ -148,7 +148,7 @@ void HiercharchicalPreconditioner::initialize()
   sparsity_pattern.copy_from(dynamic_sparsity_pattern);
   system_matrix.reinit(sparsity_pattern);
   MatrixCreator::create_laplace_matrix(dof_handler,
-                                      QGauss<3>(fe.degree),
+                                      QGauss<3>(fe.degree+1),
                                       system_matrix);
   constraints.condense(system_matrix);
   
