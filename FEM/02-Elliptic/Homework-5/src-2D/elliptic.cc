@@ -327,6 +327,7 @@ void Elliptic::setup_system(){
                                       QGaussSimplex<2>(fe.degree),
                                       RHS(),
                                       system_rhs);
+    
   constraints.condense(system_matrix, system_rhs);
 }
 
