@@ -140,8 +140,8 @@ double Initial1<dim>::value(const Point<dim> & p,
 {
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
-  return M_PI*sin(M_PI*p[0])*sin(M_PI*p[1]) 
-         - 2*M_PI*M_PI*M_PI*cos(2*M_PI*p[0])*sin(2*M_PI*p[1]);
+  return M_PI * sin(M_PI*p[0]) * sin(M_PI*p[1]) 
+         - 2*M_PI*M_PI*M_PI * (-1. + 2.*cos(2*M_PI*p[0])) * sin(2*M_PI*p[1]);
 }
 
 
@@ -152,7 +152,49 @@ double Initial2<dim>::value(const Point<dim> & p,
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
   return -M_PI*cos(M_PI*p[0])*cos(M_PI*p[1]) 
-         + 2*M_PI*M_PI*M_PI*sin(2*M_PI*p[0])*cos(2*M_PI*p[1]);
+         + 2*M_PI*M_PI*M_PI * (-1. + 2.*cos(2*M_PI*p[1])) * sin(2*M_PI*p[0]);
+}
+
+
+//----------------------Boundary values of -laplace(u)------------------------
+
+template <int dim>
+class LaplaceU1 : public Function<dim>
+{
+public:
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+
+template <int dim>
+class LaplaceU2 : public Function<dim>
+{
+public:
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+
+template <int dim>
+double LaplaceU1<dim>::value(const Point<dim> & p,
+                                  const unsigned int component) const
+{
+  (void)component;
+  Assert(component == 0, ExcIndexRange(component, 0, 1));
+  assert(p[0]==0 || p[0]==1 || p[1]==0 || p[1]==1);
+  return -2*M_PI*M_PI*M_PI * (-1. + 2.*cos(2*M_PI*p[0])) * sin(2*M_PI*p[1]);
+}
+
+
+template <int dim>
+double LaplaceU2<dim>::value(const Point<dim> & p,
+                                  const unsigned int component) const
+{
+  (void)component;
+  Assert(component == 0, ExcIndexRange(component, 0, 1));
+  assert(p[0]==0 || p[0]==1 || p[1]==0 || p[1]==1);
+  return 2*M_PI*M_PI*M_PI * (-1. + 2.*cos(2*M_PI*p[1])) * sin(2*M_PI*p[0]);
 }
 
 
@@ -176,7 +218,9 @@ private:
   void make_mesh();
   void setup_system();
   void setup_grad_pressure();
-  void solve(Vector<double>& solution, const bool ispressure = false);
+  void solve(Vector<double>& solution, 
+             const SparseMatrix<double>& system_matrix,
+             const bool ispressure = false);
   void compute_divergence();
   void output_result();
   
@@ -197,6 +241,7 @@ private:
   SparsityPattern      sparsity_pattern;
   SparsityPattern      sparsity_pattern_pressure;
 
+  SparseMatrix<double> mass_matrix_pressure;
   SparseMatrix<double> laplace_matrix_pressure;
   SparseMatrix<double> system_matrix_pressure;
 
@@ -219,6 +264,7 @@ private:
   Vector<double> solution_u1;
   Vector<double> solution_u2;
   Vector<double> divergence;
+  Vector<double> divergence_laplacian;
   Vector<double> system_rhs;
 
   int level;
@@ -253,9 +299,10 @@ void Stokes<dim>::output_result()
 {
   DataOut<dim> data_out;
   data_out.attach_dof_handler(dof_handler);
-  data_out.add_data_vector(solution_u1, "solution_u1");
-  data_out.add_data_vector(solution_u2, "solution_u2");
+  data_out.add_data_vector(solution_u1, "u1");
+  data_out.add_data_vector(solution_u2, "u2");
   data_out.add_data_vector(pressure, "pressure");
+  data_out.add_data_vector(divergence_laplacian, "div_lap_u");
   compute_divergence();
   data_out.add_data_vector(divergence, "div_u");
 
@@ -266,7 +313,9 @@ void Stokes<dim>::output_result()
 
 
 template <int dim>
-void Stokes<dim>::solve(Vector<double>& solution, const bool ispressure)
+void Stokes<dim>::solve(Vector<double>& solution,
+                        const SparseMatrix<double>& system_matrix,
+                        const bool ispressure)
 {
   SolverControl            solver_control(2000, ispressure ? 1e-8 : 1e-12);
   SolverCG<Vector<double>> solver(solver_control);
@@ -277,7 +326,10 @@ void Stokes<dim>::solve(Vector<double>& solution, const bool ispressure)
     preconditioner.initialize(system_matrix, 1.0);
     solver.solve(system_matrix, solution, system_rhs, preconditioner);
   } else {
-    SolverControl coarse_solver_control(5000, 1e-9, false, false);
+    SolverControl coarse_solver_control(5000, 
+                                        ispressure ? 1e-9 : 1e-13, 
+                                        false, 
+                                        false);
     SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
     PreconditionIdentity id;
     MGCoarseGridIterativeSolver<Vector<double>,
@@ -302,11 +354,7 @@ void Stokes<dim>::solve(Vector<double>& solution, const bool ispressure)
 
     PreconditionMG< dim, Vector<double>, MGTransferPrebuilt<Vector<double>> >
       preconditioner(dof_handler, mg, mg_transfer);
-    
-    if(ispressure)
-      solver.solve(system_matrix_pressure, solution, system_rhs, preconditioner);
-    else
-      solver.solve(system_matrix, solution, system_rhs, preconditioner);
+    solver.solve(system_matrix, solution, system_rhs, preconditioner);
 
     const double mean_value = VectorTools::compute_mean_value(
       dof_handler, QGauss<dim>(fe.degree + 1), solution, 0);
@@ -324,7 +372,7 @@ template <int dim>
 void Stokes<dim>::compute_divergence()
 {
   Assert(dim == 2, ExcNotImplemented());
-  system_matrix.copy_from(mass_matrix);
+  system_matrix_pressure.copy_from(mass_matrix_pressure);
   system_rhs.reinit(solution_u1.size());
 
   QGauss<dim> quadrature_formula(fe.degree+1);
@@ -358,7 +406,9 @@ void Stokes<dim>::compute_divergence()
         system_rhs(ldi[i]) += loc_rot(i);
     }
 
-  solve(divergence);
+  constraints_pressure.condense(system_matrix_pressure, system_rhs);
+  solve(divergence, system_matrix_pressure);
+  constraints_pressure.distribute(divergence);
 }
 
 
@@ -410,6 +460,7 @@ void Stokes<dim>::setup_system()
   laplace_matrix.reinit(sparsity_pattern);
   system_matrix.reinit(sparsity_pattern);
 
+  mass_matrix_pressure.reinit(sparsity_pattern_pressure);
   laplace_matrix_pressure.reinit(sparsity_pattern_pressure);
   system_matrix_pressure.reinit(sparsity_pattern_pressure);
 
@@ -419,6 +470,9 @@ void Stokes<dim>::setup_system()
   MatrixCreator::create_laplace_matrix(dof_handler,
                                        QGauss<dim>(fe.degree+1),
                                        laplace_matrix);
+  MatrixCreator::create_mass_matrix(dof_handler,
+                                    QGauss<dim>(fe.degree+1),
+                                    mass_matrix_pressure);
   MatrixCreator::create_laplace_matrix(dof_handler,
                                        QGauss<dim>(fe.degree+1),
                                        laplace_matrix_pressure);
@@ -427,6 +481,7 @@ void Stokes<dim>::setup_system()
   solution_u1.reinit(dof_handler.n_dofs());
   solution_u2.reinit(dof_handler.n_dofs());
   divergence.reinit(dof_handler.n_dofs());
+  divergence_laplacian.reinit(dof_handler.n_dofs());
   system_rhs.reinit(dof_handler.n_dofs());
 
   assemble_multigrid();
@@ -646,8 +701,23 @@ void Stokes<dim>::projection_poisson_setup(const Vector<double>& u1,
                           quadrature_formula,
                           update_values | update_gradients |
                           update_JxW_values);
+
+  QGauss<dim-1> quadrature_formula_face(fe.degree+1);
+  const MappingQ<dim> mapping(fe.degree);
+  FEFaceValues<dim> fe_face_values(mapping,
+                                   fe,
+                                   quadrature_formula_face,
+                                   update_values | 
+                                   update_JxW_values | update_normal_vectors
+                                    | update_quadrature_points);
+
   std::vector<double> u1_q_point(quadrature_formula.size());
   std::vector<double> u2_q_point(quadrature_formula.size());
+  std::vector<double> lapu1_face_q_point(quadrature_formula_face.size());
+  std::vector<double> lapu2_face_q_point(quadrature_formula_face.size());
+
+  LaplaceU1<dim> laplace_u1;
+  LaplaceU2<dim> laplace_u2;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
@@ -664,6 +734,26 @@ void Stokes<dim>::projection_poisson_setup(const Vector<double>& u1,
           auto grad_phi = fe_values.shape_grad(i, q_index);
           cell_rhs(i) += weight * ( u1_q_point[q_index] * grad_phi[0]
                                   + u2_q_point[q_index] * grad_phi[1] );
+        }
+      }
+
+      for (const auto &f : cell->face_iterators())
+      {
+        if( ! (f->at_boundary()) ) continue;
+        fe_face_values.reinit(cell, f);
+        auto q_face_points = fe_face_values.get_quadrature_points();
+        
+        for (const unsigned int q_index : fe_face_values.quadrature_point_indices())
+        {
+          auto normal = fe_face_values.normal_vector(q_index);
+          double weight = fe_face_values.JxW(q_index);
+          Tensor<1,dim> lapu;
+          lapu[0] = laplace_u1.value(q_face_points[q_index]);
+          lapu[1] = laplace_u2.value(q_face_points[q_index]);
+          double n_dot_lapu = normal * lapu;
+
+          for (const unsigned int i : fe_face_values.dof_indices())
+            cell_rhs(i) -= n_dot_lapu * fe_face_values.shape_value(i,q_index) * weight;
         }
       }
 
@@ -689,24 +779,25 @@ void Stokes<dim>::pre_projections(Vector<double>& u1,
     projection_poisson_setup(u1, u2);
     system_matrix_pressure.copy_from(laplace_matrix_pressure);
     constraints_pressure.condense(system_matrix_pressure, system_rhs);
-    solve(pressure, true);
-    sum_pressure.add(1., pressure);
+    solve(pressure, system_matrix_pressure, true);
     constraints_pressure.distribute(pressure);
+    sum_pressure.add(1., pressure);
+    std::cout << "gradient part norm: " << pressure.l2_norm() << std::endl;
     setup_grad_pressure();
-    
-    system_matrix.copy_from(mass_matrix);
-    mass_matrix.vmult(system_rhs, u1);
+
+    system_matrix_pressure.copy_from(mass_matrix_pressure);
+    mass_matrix_pressure.vmult(system_rhs, u1);
     system_rhs.add(-1., grad_pressure_u1);
-    constraints_u1.condense(system_matrix, system_rhs);
-    solve(u1);
-    constraints_u1.distribute(u1);
-    
-    system_matrix.copy_from(mass_matrix);
-    mass_matrix.vmult(system_rhs, u2);
+    constraints_pressure.condense(system_matrix_pressure, system_rhs);
+    solve(u1, system_matrix_pressure);
+    constraints_pressure.distribute(u1);
+
+    system_matrix_pressure.copy_from(mass_matrix_pressure);
+    mass_matrix_pressure.vmult(system_rhs, u2);
     system_rhs.add(-1., grad_pressure_u2);
-    constraints_u2.condense(system_matrix, system_rhs);
-    solve(u2);
-    constraints_u2.distribute(u2);
+    constraints_pressure.condense(system_matrix_pressure, system_rhs);
+    solve(u2, system_matrix_pressure);
+    constraints_pressure.distribute(u2);
     
     std::cout << std::endl;
   }
@@ -727,20 +818,23 @@ void Stokes<dim>::run(){
                            solution_u2);
   
   pre_projections(solution_u1, solution_u2, proj_steps);
+  compute_divergence();
+  divergence_laplacian = divergence;
 
+  // Reassemble multigrid with homogeneous Dirichlet boundary.
   assemble_multigrid(true);
   
   mass_matrix.vmult(system_rhs, solution_u1);
   system_matrix.copy_from(laplace_matrix);
   constraints_u1.condense(system_matrix, system_rhs);
-  solve(solution_u1);
+  solve(solution_u1, system_matrix);
   constraints_u1.distribute(solution_u1);
 
   mass_matrix.vmult(system_rhs, solution_u2);
   system_matrix.copy_from(laplace_matrix);
-  constraints_u1.condense(system_matrix, system_rhs);
-  solve(solution_u2);
-  constraints_u1.distribute(solution_u2);
+  constraints_u2.condense(system_matrix, system_rhs);
+  solve(solution_u2, system_matrix);
+  constraints_u2.distribute(solution_u2);
 
   next_step = false;
   output_result();
