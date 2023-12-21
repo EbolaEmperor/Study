@@ -156,7 +156,7 @@ double Initial2<dim>::value(const Point<dim> & p,
 }
 
 
-//----------------------Boundary values of -laplace(u)------------------------
+//----------------------Boundary values of laplace(u)------------------------
 
 template <int dim>
 class LaplaceU1 : public Function<dim>
@@ -183,7 +183,7 @@ double LaplaceU1<dim>::value(const Point<dim> & p,
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
   assert(p[0]==0 || p[0]==1 || p[1]==0 || p[1]==1);
-  return -2*M_PI*M_PI*M_PI * (-1. + 2.*cos(2*M_PI*p[0])) * sin(2*M_PI*p[1]);
+  return 2*M_PI*M_PI*M_PI * (-1. + 2.*cos(2*M_PI*p[0])) * sin(2*M_PI*p[1]);
 }
 
 
@@ -194,7 +194,7 @@ double LaplaceU2<dim>::value(const Point<dim> & p,
   (void)component;
   Assert(component == 0, ExcIndexRange(component, 0, 1));
   assert(p[0]==0 || p[0]==1 || p[1]==0 || p[1]==1);
-  return 2*M_PI*M_PI*M_PI * (-1. + 2.*cos(2*M_PI*p[1])) * sin(2*M_PI*p[0]);
+  return -2*M_PI*M_PI*M_PI * (-1. + 2.*cos(2*M_PI*p[1])) * sin(2*M_PI*p[0]);
 }
 
 
@@ -753,7 +753,7 @@ void Stokes<dim>::projection_poisson_setup(const Vector<double>& u1,
           double n_dot_lapu = normal * lapu;
 
           for (const unsigned int i : fe_face_values.dof_indices())
-            cell_rhs(i) -= n_dot_lapu * fe_face_values.shape_value(i,q_index) * weight;
+            cell_rhs(i) += n_dot_lapu * fe_face_values.shape_value(i,q_index) * weight;
         }
       }
 
