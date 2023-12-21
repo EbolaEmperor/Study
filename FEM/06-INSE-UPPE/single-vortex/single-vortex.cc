@@ -283,6 +283,7 @@ private:
   MGLevelObject<SparseMatrix<double>> mg_matrices;
   MGLevelObject<SparseMatrix<double>> mg_interface_matrices;
   MGConstrainedDoFs                   mg_constrained_dofs;
+  MGTransferPrebuilt<Vector<double>>  mg_transfer;
 
   Vector<double> convection_u1;
   Vector<double> convection_u2;
@@ -425,9 +426,6 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     preconditioner.initialize(system_matrix, 1.0);
     solver.solve(system_matrix, solution, system_rhs, preconditioner);
   } else {
-    MGTransferPrebuilt<Vector<double>> mg_transfer(mg_constrained_dofs);
-    mg_transfer.build(dof_handler);
-
     SolverControl coarse_solver_control(5000, 1e-9, false, false);
     SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
     PreconditionIdentity id;
@@ -653,6 +651,9 @@ void INSE<dim>::assemble_multigrid()
                         scratch_data,
                         CopyData(),
                         MeshWorker::assemble_own_cells);
+  
+  mg_transfer.initialize_constraints(mg_constrained_dofs);
+  mg_transfer.build(dof_handler);
 }
 
 
@@ -1036,6 +1037,7 @@ void INSE<dim>::run(){
   solution_u1 = prev_solution_u1;
   solution_u2 = prev_solution_u2;
   CPUTimer timer;
+  const double prod = pow(2., 1./30000);
 
   while(time <= end_time){
     // ------------------------------first stage-------------------------------------
@@ -1043,7 +1045,8 @@ void INSE<dim>::run(){
     update_pressure(prev_solution_u1, prev_solution_u2);
     output_result();
     
-    if(timestep_number==100000) time_step *= 2;
+    if(timestep_number>=70000
+      && timestep_number<=100000) time_step *= prod;
 
     time += time_step;
     timestep_number++;
