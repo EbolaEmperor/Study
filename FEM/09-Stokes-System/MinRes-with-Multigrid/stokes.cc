@@ -465,6 +465,8 @@ void StokesProblem<dim>::solve()
             << " MINRES iterations." << std::endl;
 
   constraints.distribute(solution);
+  const double mean_value = solution.block(dim).mean_value();
+  solution.block(dim).add(-mean_value);
 }
 
 
