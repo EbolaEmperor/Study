@@ -10,6 +10,7 @@
 #include <deal.II/lac/solver_minres.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/affine_constraints.h>
+#include <deal.II/lac/generic_linear_algebra.h>
  
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/grid_generator.h>
@@ -19,7 +20,6 @@
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_tools.h>
- 
  
 #include <deal.II/fe/fe_simplex_p.h>
 #include <deal.II/fe/fe_system.h>
@@ -52,6 +52,54 @@ struct CPUTimer
 using namespace dealii;
 
 
+class PreconditionStokes : public Subscriptor
+{
+public:
+  void initialize(const BlockSparseMatrix<double>& system_matrix,
+                  const BlockSparsityPattern& preconditioner_sparsity_pattern,
+                  const BlockSparseMatrix<double>& preconditioner_matrix,
+                  const std::vector<types::global_dof_index>& dofs_per_block_input);
+  void vmult(Vector<double> &dst, const Vector<double> &src) const;
+
+private:
+  TrilinosWrappers::PreconditionAMG preconditioner[2];
+  SparseMatrix<double> preconditioner_pressure;
+  std::vector<types::global_dof_index> dofs_per_block;
+};
+
+
+void PreconditionStokes::initialize(
+    const BlockSparseMatrix<double>& system_matrix,
+    const BlockSparsityPattern& preconditioner_sparsity_pattern,
+    const BlockSparseMatrix<double>& preconditioner_matrix,
+    const std::vector<types::global_dof_index>& dofs_per_block_input)
+{
+  dofs_per_block = dofs_per_block_input;
+  preconditioner[0].initialize(system_matrix.block(0,0));
+  preconditioner[1].initialize(system_matrix.block(1,1));
+
+  preconditioner_pressure.reinit(preconditioner_sparsity_pattern.block(2,2));
+  preconditioner_pressure.copy_from(preconditioner_matrix.block(2,2));
+  for(auto &p : preconditioner_pressure)
+    p.value() = 1./p.value();
+}
+
+
+void PreconditionStokes::vmult(Vector<double> &dst, const Vector<double> &src) const
+{
+  BlockVector<double> block_src;
+  BlockVector<double> block_dst;
+  block_src.reinit(dofs_per_block);
+  block_dst.reinit(dofs_per_block);
+
+  block_src = src;
+  preconditioner[0].vmult(block_dst.block(0), block_src.block(0));
+  preconditioner[1].vmult(block_dst.block(1), block_src.block(1));
+  preconditioner_pressure.vmult(block_dst.block(2), block_src.block(2));
+  dst = block_dst;
+}
+
+
 template <int dim>
 class StokesProblem
 {
@@ -72,10 +120,13 @@ private:
   FESystem<dim>      fe;
   DoFHandler<dim>    dof_handler;
 
+  std::vector<types::global_dof_index> dofs_per_block;
+
   AffineConstraints<double> constraints;
 
   BlockSparsityPattern      sparsity_pattern;
   BlockSparsityPattern      preconditioner_sparsity_pattern;
+  BlockSparseMatrix<double> system_matrix;
   BlockSparseMatrix<double> preconditioner_matrix;
 
   BlockVector<double> solution;
@@ -84,7 +135,6 @@ private:
 
   SparsityPattern      full_sparsity_pattern;
   SparseMatrix<double> full_system_matrix;
-  SparseMatrix<double> inv_diag_mass_pressure;
 };
 
 
@@ -200,8 +250,7 @@ void StokesProblem<dim>::setup_dofs()
 
   constraints.close();
 
-  const std::vector<types::global_dof_index> dofs_per_block =
-    DoFTools::count_dofs_per_fe_block(dof_handler);
+  dofs_per_block = DoFTools::count_dofs_per_fe_block(dof_handler);
 
   {
     BlockDynamicSparsityPattern dsp(dofs_per_block, dofs_per_block);
@@ -261,6 +310,7 @@ void StokesProblem<dim>::setup_dofs()
 
   full_system_matrix.reinit(full_sparsity_pattern);
   preconditioner_matrix.reinit(preconditioner_sparsity_pattern);
+  system_matrix.reinit(sparsity_pattern);
 
   full_system_rhs.reinit(dof_handler.n_dofs());
   full_solution.reinit(dof_handler.n_dofs());
@@ -356,15 +406,13 @@ void StokesProblem<dim>::assemble_system()
                                               local_dof_indices,
                                               full_system_matrix,
                                               full_system_rhs);
+      constraints.distribute_local_to_global(local_matrix,
+                                              local_dof_indices,
+                                              system_matrix);
       constraints.distribute_local_to_global(local_preconditioner_matrix,
                                               local_dof_indices,
                                               preconditioner_matrix);
     }
-
-  inv_diag_mass_pressure.reinit(preconditioner_sparsity_pattern.block(2,2));
-  inv_diag_mass_pressure.copy_from(preconditioner_matrix.block(2,2));
-  for(auto &p : inv_diag_mass_pressure)
-    p.value() = 1./p.value();
 }
 
 
@@ -374,10 +422,16 @@ void StokesProblem<dim>::solve()
   SolverControl solver_control(50000, 1e-6 * full_system_rhs.l2_norm());
   SolverMinRes<Vector<double>> minres(solver_control);
 
+  PreconditionStokes preconditioner;
+  preconditioner.initialize(system_matrix,
+                            preconditioner_sparsity_pattern,
+                            preconditioner_matrix,
+                            dofs_per_block);
+
   minres.solve(full_system_matrix, 
                full_solution, 
                full_system_rhs, 
-               PreconditionIdentity());
+               preconditioner);
   solution = full_solution;
   std::cout << "      " << solver_control.last_step()
             << " MINRES iterations." << std::endl;
@@ -420,7 +474,7 @@ void StokesProblem<dim>::run()
   triangulation.refine_global(2);
   CPUTimer timer;
 
-  for (unsigned int refinement_cycle = 0; refinement_cycle < 7;
+  for (unsigned int refinement_cycle = 0; refinement_cycle < 9;
         ++refinement_cycle)
     {
       std::cout << "Level " << 2+refinement_cycle << std::endl;
@@ -443,10 +497,11 @@ void StokesProblem<dim>::run()
 }
  
  
-int main()
+int main(int argc, char *argv[])
 {
   try
     {
+      Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
       StokesProblem<2> flow_problem(1);
       flow_problem.run();
     }
