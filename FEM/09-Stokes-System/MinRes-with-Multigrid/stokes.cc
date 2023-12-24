@@ -113,6 +113,7 @@ private:
   void solve();
   void output_results(const unsigned int refinement_cycle) const;
   void refine_mesh();
+  void compute_L2_error();
 
   const unsigned int degree;
 
@@ -211,6 +212,33 @@ void RightHandSide<dim>::value_list(const std::vector<Point<dim>> &vp,
     {
       values[c] = RightHandSide<dim>::value(vp[c]);
     }
+}
+
+
+template <int dim>
+class TrueSolution : public Function<dim>
+{
+public:
+  TrueSolution()
+    : Function<dim>()
+  {}
+
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+
+template <int dim>
+double TrueSolution<dim>::value(const Point<dim> &p,
+                                const unsigned int component) const
+{
+  if(component == 0)
+    return M_PI * pow(sin(M_PI*p[0]), 2.) * sin(2.*M_PI*p[1]);
+  else if(component == 1)
+    return -M_PI * pow(sin(M_PI*p[1]), 2.) * sin(2.*M_PI*p[0]);
+  else if(component == 2)
+    return -cos(M_PI*p[0]) * sin(M_PI*p[1]);
+  return 0;
 }
 
 
@@ -382,7 +410,7 @@ void StokesProblem<dim>::assemble_system()
                   double gg = grad_phi_u[i][0] * grad_phi_u[j][0]
                             + grad_phi_u[i][1] * grad_phi_u[j][1];
                   local_matrix(i, j) +=
-                    (2 * gg // (1)
+                    ( gg                                        // (1)
                       - div_phi_u[i] * phi_p[j]                 // (2)
                       - phi_p[i] * div_phi_u[j])                // (3)
                     * fe_values.JxW(q);                        // * dx
@@ -467,6 +495,51 @@ StokesProblem<dim>::output_results(const unsigned int refinement_cycle) const
 }
 
 
+
+template <int dim>
+void StokesProblem<dim>::compute_L2_error()
+{
+  QGaussSimplex<dim> quadrature_formula(degree + 2);
+  FEValues<dim> fe_values(fe,
+                          quadrature_formula,
+                          update_values | update_quadrature_points |
+                            update_JxW_values);
+
+  const unsigned int n_q_points = quadrature_formula.size();
+
+  const TrueSolution<dim> true_solution;
+  std::vector<Tensor<1, dim>> numerical_results_u(n_q_points);
+  std::vector<double>         numerical_results_p(n_q_points);
+
+  const FEValuesExtractors::Vector velocities(0);
+  const FEValuesExtractors::Scalar pressure(dim);
+
+  double err_u1 = 0.;
+  double err_u2 = 0.;
+  double err_p  = 0.;
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      fe_values.reinit(cell);
+      fe_values[velocities].get_function_values(solution, numerical_results_u);
+      fe_values[pressure].get_function_values(solution, numerical_results_p);
+      auto q_points = fe_values.get_quadrature_points();
+
+      for (unsigned int q = 0; q < n_q_points; ++q)
+        {
+          auto jxw = fe_values.JxW(q);
+          err_u1 += pow(true_solution.value(q_points[q], 0) - numerical_results_u[q][0], 2.) * jxw;
+          err_u2 += pow(true_solution.value(q_points[q], 1) - numerical_results_u[q][1], 2.) * jxw;
+          err_p  += pow(true_solution.value(q_points[q], 2) - numerical_results_p[q], 2.) * jxw;
+        }
+    }
+  
+  std::cout << "      u1 error: " << sqrt(err_u1) << std::endl;
+  std::cout << "      u2 error: " << sqrt(err_u2) << std::endl;
+  std::cout << "      p  error: " << sqrt(err_p)  << std::endl << std::flush;
+}
+
+
 template <int dim>
 void StokesProblem<dim>::run()
 {
@@ -477,7 +550,8 @@ void StokesProblem<dim>::run()
   for (unsigned int refinement_cycle = 0; refinement_cycle < 9;
         ++refinement_cycle)
     {
-      std::cout << "Level " << 2+refinement_cycle << std::endl;
+      std::cout << "Level " << 2+refinement_cycle;
+      std::cout << " ----------------------------------------" << std::endl;
       if (refinement_cycle > 0) triangulation.refine_global(1);
       setup_dofs();
 
@@ -491,8 +565,12 @@ void StokesProblem<dim>::run()
       solve();
       std::cout << "   Solved in " << timer() << "s" << std::endl;
 
+      std::cout << "   Outputing...  " << std::endl << std::flush;
       output_results(refinement_cycle);
-      std::cout << std::endl;
+
+      std::cout << "   Computing L2 error...  " << std::endl << std::flush;
+      compute_L2_error();
+      std::cout << std::endl << std::flush;
     }
 }
  
