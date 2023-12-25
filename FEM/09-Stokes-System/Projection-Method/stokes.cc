@@ -198,6 +198,35 @@ double LaplaceU2<dim>::value(const Point<dim> & p,
 }
 
 
+//---------------------------------True Solution-----------------------------------
+
+template <int dim>
+class TrueSolution : public Function<dim>
+{
+public:
+  TrueSolution()
+    : Function<dim>()
+  {}
+
+  virtual double value(const Point<dim>  &p,
+                        const unsigned int component = 0) const override;
+};
+
+
+template <int dim>
+double TrueSolution<dim>::value(const Point<dim> &p,
+                                const unsigned int component) const
+{
+  if(component == 0)
+    return M_PI * pow(sin(M_PI*p[0]), 2.) * sin(2.*M_PI*p[1]);
+  else if(component == 1)
+    return -M_PI * pow(sin(M_PI*p[1]), 2.) * sin(2.*M_PI*p[0]);
+  else if(component == 2)
+    return -cos(M_PI*p[0]) * sin(M_PI*p[1]);
+  return 0;
+}
+
+
 //---------------------------------Solver Class-----------------------------------
 
 
@@ -223,6 +252,7 @@ private:
              const bool ispressure = false);
   void compute_divergence();
   void output_result();
+  void compute_L2_error();
   
   void pre_projections(Vector<double>& u1, 
                        Vector<double>& u2, 
@@ -317,7 +347,7 @@ void Stokes<dim>::solve(Vector<double>& solution,
                         const SparseMatrix<double>& system_matrix,
                         const bool ispressure)
 {
-  SolverControl            solver_control(2000, ispressure ? 1e-8 : 1e-12);
+  SolverControl            solver_control(2000, 1e-10);
   SolverCG<Vector<double>> solver(solver_control);
 
   if(!ispressure && !next_step)
@@ -326,10 +356,7 @@ void Stokes<dim>::solve(Vector<double>& solution,
     preconditioner.initialize(system_matrix, 1.0);
     solver.solve(system_matrix, solution, system_rhs, preconditioner);
   } else {
-    SolverControl coarse_solver_control(5000, 
-                                        ispressure ? 1e-9 : 1e-13, 
-                                        false, 
-                                        false);
+    SolverControl coarse_solver_control(5000, 1e-11, false, false);
     SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
     PreconditionIdentity id;
     MGCoarseGridIterativeSolver<Vector<double>,
@@ -806,7 +833,51 @@ void Stokes<dim>::pre_projections(Vector<double>& u1,
 
 
 template <int dim>
+void Stokes<dim>::compute_L2_error()
+{
+  QGauss<dim> quadrature_formula(3);
+  FEValues<dim> fe_values(fe,
+                          quadrature_formula,
+                          update_values | update_quadrature_points |
+                            update_JxW_values);
+
+  const unsigned int n_q_points = quadrature_formula.size();
+
+  const TrueSolution<dim> true_solution;
+  std::vector<double> numerical_results_u1(n_q_points);
+  std::vector<double> numerical_results_u2(n_q_points);
+  std::vector<double>  numerical_results_p(n_q_points);
+
+  double err_u1 = 0.;
+  double err_u2 = 0.;
+  double err_p  = 0.;
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      fe_values.reinit(cell);
+      fe_values.get_function_values(solution_u1, numerical_results_u1);
+      fe_values.get_function_values(solution_u2, numerical_results_u2);
+      fe_values.get_function_values(pressure, numerical_results_p);
+      auto q_points = fe_values.get_quadrature_points();
+
+      for (unsigned int q = 0; q < n_q_points; ++q)
+        {
+          auto jxw = fe_values.JxW(q);
+          err_u1 += pow(true_solution.value(q_points[q], 0) - numerical_results_u1[q], 2.) * jxw;
+          err_u2 += pow(true_solution.value(q_points[q], 1) - numerical_results_u2[q], 2.) * jxw;
+          err_p  += pow(true_solution.value(q_points[q], 2) - numerical_results_p[q], 2.) * jxw;
+        }
+    }
+  
+  std::cout << "   u1 error: " << sqrt(err_u1) << std::endl;
+  std::cout << "   u2 error: " << sqrt(err_u2) << std::endl;
+  std::cout << "   p  error: " << sqrt(err_p)  << std::endl << std::flush;
+}
+
+
+template <int dim>
 void Stokes<dim>::run(){
+  CPUTimer timer;
   make_mesh();
   setup_system();
   
@@ -836,8 +907,12 @@ void Stokes<dim>::run(){
   solve(solution_u2, system_matrix);
   constraints_u2.distribute(solution_u2);
 
+  std::cout << "Initialized and solved in " << timer() << "s.\n" << std::endl;
+  std::cout << "Post-processing..." << std::endl;
+
   next_step = false;
   output_result();
+  compute_L2_error();
 }
 
 
