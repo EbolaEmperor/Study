@@ -1,3 +1,15 @@
+/**********************************************************
+ * This is a solver for Stokes system
+ * Spacial Discretization: (P2-P1) mixed elements.
+ * Linear solver: Preconditioned MinRes
+ * Preconditioner: B = diag(B1, B2, BP)
+ * B1 and B2 are AMG V-Cycle for Poisson equation
+ * BP = inv(diag(M_Q)) if define USE_DIAG_MQ
+ *      otherwise, BP=inv(M_Q), which will be solved with CG.
+***********************************************************/
+
+#define USE_DIAG_MQ
+
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/function.h>
@@ -52,9 +64,43 @@ struct CPUTimer
 using namespace dealii;
 
 
+//----------------------------Inverse matrices--------------------------------
+
+template <class MatrixType>
+class InverseMatrix : public Subscriptor
+{
+public:
+  InverseMatrix(const MatrixType &);
+  void vmult(Vector<double> &dst, const Vector<double> &src) const;
+
+private:
+  const SmartPointer<const MatrixType>         matrix;
+};
+
+template <class MatrixType>
+InverseMatrix<MatrixType>::InverseMatrix
+  (const MatrixType &m)
+  : matrix(&m)
+{}
+
+template <class MatrixType>
+void InverseMatrix<MatrixType>::vmult
+  (Vector<double> &dst, const Vector<double> &src) const
+{
+  SolverControl control(5000, 1e-6*src.l2_norm());
+  SolverCG<Vector<double>> solver(control);
+  solver.solve(*matrix, dst, src, PreconditionIdentity()); 
+  // std::cout << "   " << control.last_step() << " CG iterations." << std::endl;
+}
+
+
+//----------------------------Stokes Preconditioner-------------------------------
+
+
 class PreconditionStokes : public Subscriptor
 {
 public:
+  PreconditionStokes();
   void initialize(const BlockSparseMatrix<double>& system_matrix,
                   const BlockSparsityPattern& preconditioner_sparsity_pattern,
                   const BlockSparseMatrix<double>& preconditioner_matrix,
@@ -63,9 +109,19 @@ public:
 
 private:
   TrilinosWrappers::PreconditionAMG preconditioner[2];
-  SparseMatrix<double> preconditioner_pressure;
+  SparseMatrix<double> mass_pressure;
+  InverseMatrix<SparseMatrix<double>> preconditioner_pressure;
   std::vector<types::global_dof_index> dofs_per_block;
+
+#ifdef USE_DIAG_MQ
+  Vector<double> diag_mass_pressure_inverse;
+#endif
 };
+
+
+PreconditionStokes::PreconditionStokes()
+  : preconditioner_pressure(mass_pressure)
+{}
 
 
 void PreconditionStokes::initialize(
@@ -78,10 +134,14 @@ void PreconditionStokes::initialize(
   preconditioner[0].initialize(system_matrix.block(0,0));
   preconditioner[1].initialize(system_matrix.block(1,1));
 
-  preconditioner_pressure.reinit(preconditioner_sparsity_pattern.block(2,2));
-  preconditioner_pressure.copy_from(preconditioner_matrix.block(2,2));
-  for(auto &p : preconditioner_pressure)
-    p.value() = 1./p.value();
+  mass_pressure.reinit(preconditioner_sparsity_pattern.block(2,2));
+  mass_pressure.copy_from(preconditioner_matrix.block(2,2));
+
+#ifdef USE_DIAG_MQ
+  diag_mass_pressure_inverse.reinit(mass_pressure.n());
+  for(auto p : mass_pressure)
+    if(p.row()==p.column()) diag_mass_pressure_inverse[p.row()] = 1./p.value();
+#endif
 }
 
 
@@ -95,7 +155,14 @@ void PreconditionStokes::vmult(Vector<double> &dst, const Vector<double> &src) c
   block_src = src;
   preconditioner[0].vmult(block_dst.block(0), block_src.block(0));
   preconditioner[1].vmult(block_dst.block(1), block_src.block(1));
+
+#ifdef USE_DIAG_MQ
+  for(unsigned i = 0; i < diag_mass_pressure_inverse.size(); i++)
+    block_dst.block(2)[i] = block_src.block(2)[i] * diag_mass_pressure_inverse[i];
+#else
   preconditioner_pressure.vmult(block_dst.block(2), block_src.block(2));
+#endif
+
   dst = block_dst;
 }
 
@@ -325,7 +392,7 @@ void StokesProblem<dim>::setup_dofs()
     Table<2, DoFTools::Coupling> preconditioner_coupling(dim + 1, dim + 1);
     for (unsigned int c = 0; c < dim + 1; ++c)
       for (unsigned int d = 0; d < dim + 1; ++d)
-        preconditioner_coupling[c][d] = DoFTools::none;
+        preconditioner_coupling[c][d] = (c==dim && d==dim) ? DoFTools::always : DoFTools::none;
 
     DoFTools::make_sparsity_pattern(dof_handler,
                                     preconditioner_coupling,
@@ -414,19 +481,21 @@ void StokesProblem<dim>::assemble_system()
                       - div_phi_u[i] * phi_p[j]                 // (2)
                       - phi_p[i] * div_phi_u[j])                // (3)
                     * fe_values.JxW(q);                        // * dx
+                  local_preconditioner_matrix(i, j) +=
+                    (phi_p[i] * phi_p[j]) // (4)
+                    * fe_values.JxW(q);   // * dx
                 }
               local_rhs(i) += phi_u[i]            // phi_u_i(x_q)
                               * rhs_values[q]     // * f(x_q)
                               * fe_values.JxW(q); // * dx
-              local_preconditioner_matrix(i, i) +=
-                    (phi_p[i] * phi_p[i]) // (4)
-                    * fe_values.JxW(q);   // * dx
             }
         }
 
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
-        for (unsigned int j = i + 1; j < dofs_per_cell; ++j)
+        for (unsigned int j = i + 1; j < dofs_per_cell; ++j){
             local_matrix(i, j) = local_matrix(j, i);
+            local_preconditioner_matrix(i, j) = local_preconditioner_matrix(j, i);
+        }
 
       cell->get_dof_indices(local_dof_indices);
       constraints.distribute_local_to_global(local_matrix,
