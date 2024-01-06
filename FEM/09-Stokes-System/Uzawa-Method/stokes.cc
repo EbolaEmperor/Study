@@ -1,3 +1,13 @@
+/**********************************************************
+ * This is a solver for Stokes system
+ * Spacial Discretization: (P2-P1) mixed elements.
+ * Linear solver: Inexact Uzawa iteration
+ *                    u <- inv(A) * (f - B' * p)
+ *                    p <- p + inv(M_Q) * B * u
+ *                replace inv(A) with an AMG V-cycle for A
+ *                replace inv(M_Q) with inv(diag(M_Q))
+***********************************************************/
+
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/function.h>
@@ -89,6 +99,7 @@ private:
   AffineConstraints<double> constraints;
 
   std::shared_ptr<TrilinosWrappers::PreconditionAMG> A_preconditioner;
+  SparseMatrix<double>  diag_MQ_inverse;
 };
 
 
@@ -193,38 +204,6 @@ double TrueSolution<dim>::value(const Point<dim> &p,
   else if(component == 2)
     return -cos(M_PI*p[0]) * sin(M_PI*p[1]);
   return 0;
-}
-
-
-//----------------------------Inverse matrices--------------------------------
-
-template <class MatrixType, class PreconditionerType>
-class InverseMatrix : public Subscriptor
-{
-public:
-  InverseMatrix(const MatrixType &,
-                const PreconditionerType &);
-  void vmult(Vector<double> &dst, const Vector<double> &src) const;
-
-private:
-  const SmartPointer<const MatrixType>         matrix;
-  const SmartPointer<const PreconditionerType> preconditioner;
-};
-
-template <class MatrixType, class PreconditionerType>
-InverseMatrix<MatrixType, PreconditionerType>::InverseMatrix
-  (const MatrixType &m, const PreconditionerType &p)
-  : matrix(&m), preconditioner(&p)
-{}
-
-template <class MatrixType, class PreconditionerType>
-void InverseMatrix<MatrixType, PreconditionerType>::vmult
-  (Vector<double> &dst, const Vector<double> &src) const
-{
-  SolverControl control(5000, 1e-7*src.l2_norm());
-  SolverCG<Vector<double>> solver(control);
-  solver.solve(*matrix, dst, src, *preconditioner); 
-  // std::cout << "   " << control.last_step() << " CG iterations." << std::endl;
 }
 
 
@@ -341,7 +320,7 @@ void StokesProblem<dim>::setup_system()
     Table<2, DoFTools::Coupling> coupling(dim+1, dim+1);
     for(unsigned i = 0; i <= dim; i++)
       for(unsigned j = 0; j <= dim; j++)
-        coupling[i][j] = (i==dim && j==dim) ? DoFTools::always : DoFTools::none;
+        coupling[i][j] = DoFTools::none;
     
     DoFTools::make_sparsity_pattern(
       dof_handler, coupling, dsp, constraints, false);
@@ -350,6 +329,7 @@ void StokesProblem<dim>::setup_system()
 
   system_matrix.reinit(sparsity_pattern);
   preconditioner_matrix.reinit(preconditioner_sparsity_pattern);
+  diag_MQ_inverse.reinit(preconditioner_sparsity_pattern.block(1,1));
 
   solution.reinit(dofs_per_block);
   system_rhs.reinit(dofs_per_block);
@@ -425,21 +405,19 @@ void StokesProblem<dim>::assemble_system()
                       - div_phi_u[i] * phi_p[j]                 // (2)
                       - phi_p[i] * div_phi_u[j])                // (3)
                     * fe_values.JxW(q);                        // * dx
-                  local_preconditioner_matrix(i, j) +=
-                    (phi_p[i] * phi_p[j]) // (4)
-                    * fe_values.JxW(q);   // * dx
                 }
               local_rhs(i) += phi_u[i]            // phi_u_i(x_q)
                               * rhs_values[q]     // * f(x_q)
                               * fe_values.JxW(q); // * dx
+              local_preconditioner_matrix(i, i) +=
+                    (phi_p[i] * phi_p[i]) // (4)
+                    * fe_values.JxW(q);   // * dx
             }
         }
 
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
-        for (unsigned int j = i + 1; j < dofs_per_cell; ++j){
+        for (unsigned int j = i + 1; j < dofs_per_cell; ++j)
             local_matrix(i, j) = local_matrix(j, i);
-            local_preconditioner_matrix(i, j) = local_preconditioner_matrix(j, i);
-        }
 
       cell->get_dof_indices(local_dof_indices);
       constraints.distribute_local_to_global(local_matrix,
@@ -457,22 +435,18 @@ void StokesProblem<dim>::assemble_system()
   A_preconditioner = 
     std::make_shared<TrilinosWrappers::PreconditionAMG>();
   A_preconditioner->initialize(system_matrix.block(0,0));
+
+  diag_MQ_inverse.copy_from(preconditioner_matrix.block(1,1));
+  for(auto& p : diag_MQ_inverse)
+    p.value() = 1./p.value();
 }
 
 
 template<int dim>
 void StokesProblem<dim>::solve()
-{
-  // Build inner solver
-  const InverseMatrix<SparseMatrix<double>,
-                      TrilinosWrappers::PreconditionAMG>
-              A_inverse(system_matrix.block(0,0), *A_preconditioner);
-  
-  auto preconditioner_identity = PreconditionIdentity();
-  const InverseMatrix<SparseMatrix<double>, PreconditionIdentity>
-              MQ_inverse(preconditioner_matrix.block(1,1), preconditioner_identity);
-  
+{ 
   Vector<double> rhs(solution.block(0).size());
+  Vector<double> prevres(solution.block(0).size());
   Vector<double> tmp(solution.block(1).size());
   Vector<double> tmp2(solution.block(1).size());
   int cnt = 0;
@@ -482,16 +456,16 @@ void StokesProblem<dim>::solve()
     system_matrix.block(0,1).vmult(rhs, solution.block(1));
     rhs *= -1;
     rhs.add(1., system_rhs.block(0));
-    // tmpBV.block(0) = rhs;
-    // constraints.condense(tmpBV);
-    A_inverse.vmult(solution.block(0), rhs);
+
+    system_matrix.block(0,0).vmult(prevres, solution.block(0));
+    rhs.add(-1., prevres);
+    prevres = 0.;
+    A_preconditioner->vmult(prevres, rhs);
+    solution.block(0).add(1., prevres);
     constraints.distribute(solution);
 
-    // system_matrix.block(0,0).vmult(rhs, solution.block(0));
-    // rhs.add(-1, tmpBV.block(0));
-
     system_matrix.block(1,0).vmult(tmp, solution.block(0));
-    MQ_inverse.vmult(tmp2, tmp);
+    diag_MQ_inverse.vmult(tmp2, tmp);
     solution.block(1).add(1, tmp2);
 
     system_matrix.vmult(checker, solution);
