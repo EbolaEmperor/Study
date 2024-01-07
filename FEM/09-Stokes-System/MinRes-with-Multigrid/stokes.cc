@@ -2,10 +2,11 @@
  * This is a solver for Stokes system
  * Spacial Discretization: (P2-P1) mixed elements.
  * Linear solver: Preconditioned MinRes
- * Preconditioner: B = diag(B1, B2, BP)
- * B1 and B2 are AMG V-Cycle for Poisson equation
- * BP = inv(diag(M_Q)) if define USE_DIAG_MQ
- *      otherwise, BP=inv(M_Q), which will be solved with CG.
+ *                Preconditioner: B = diag(B1, B2, BP)
+ *                B1,B2: AMG W-Cycle for Poisson equation
+ *                BP = inv(diag(M_Q)) if define USE_DIAG_MQ
+ *                otherwise, BP=inv(M_Q), 
+ *                which will be solved with CG.
 ***********************************************************/
 
 #define USE_DIAG_MQ
@@ -131,8 +132,13 @@ void PreconditionStokes::initialize(
     const std::vector<types::global_dof_index>& dofs_per_block_input)
 {
   dofs_per_block = dofs_per_block_input;
-  preconditioner[0].initialize(system_matrix.block(0,0));
-  preconditioner[1].initialize(system_matrix.block(1,1));
+
+  TrilinosWrappers::PreconditionAMG::AdditionalData additional_data;
+  additional_data.higher_order_elements = true;
+  additional_data.w_cycle = true;
+
+  preconditioner[0].initialize(system_matrix.block(0,0), additional_data);
+  preconditioner[1].initialize(system_matrix.block(1,1), additional_data);
 
   mass_pressure.reinit(preconditioner_sparsity_pattern.block(2,2));
   mass_pressure.copy_from(preconditioner_matrix.block(2,2));

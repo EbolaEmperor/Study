@@ -431,20 +431,26 @@ void StokesProblem<dim>::assemble_system()
       // for (const unsigned int i : fe_values.dof_indices())
       //   system_rhs(local_dof_indices[i]) += local_rhs(i);
     }
-
-  A_preconditioner = 
-    std::make_shared<TrilinosWrappers::PreconditionAMG>();
-  A_preconditioner->initialize(system_matrix.block(0,0));
-
-  diag_MQ_inverse.copy_from(preconditioner_matrix.block(1,1));
-  for(auto& p : diag_MQ_inverse)
-    p.value() = 1./p.value();
 }
 
 
 template<int dim>
 void StokesProblem<dim>::solve()
-{ 
+{
+  // Build preconditioners
+  TrilinosWrappers::PreconditionAMG::AdditionalData additional_data;
+  additional_data.higher_order_elements = true;
+  additional_data.w_cycle = true;
+
+  A_preconditioner = 
+    std::make_shared<TrilinosWrappers::PreconditionAMG>();
+  A_preconditioner->initialize(system_matrix.block(0,0), additional_data);
+
+  diag_MQ_inverse.copy_from(preconditioner_matrix.block(1,1));
+  for(auto& p : diag_MQ_inverse)
+    p.value() = 1./p.value();
+
+  // Uzawa iteration
   Vector<double> rhs(solution.block(0).size());
   Vector<double> prevres(solution.block(0).size());
   Vector<double> tmp(solution.block(1).size());
