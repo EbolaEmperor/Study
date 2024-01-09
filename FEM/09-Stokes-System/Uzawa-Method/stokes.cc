@@ -75,7 +75,6 @@ public:
 
 private:
   void make_grid();
-  void refine_grid();
   void setup_system();
   void assemble_system();
   void solve();
@@ -103,44 +102,7 @@ private:
 };
 
 
-//--------------------------Dirichlet Boundary Term---------------------------
-
-template <int dim>
-class BoundaryValues : public Function<dim>
-{
-public:
-  BoundaryValues()
-    : Function<dim>(dim + 1)
-  {}
-
-  virtual double value(const Point<dim>  &p,
-                        const unsigned int component = 0) const override;
-
-  virtual void vector_value(const Point<dim> &p,
-                            Vector<double>   &value) const override;
-};
-
-
-template <int dim>
-double BoundaryValues<dim>::value(const Point<dim>  &p,
-                                  const unsigned int component) const
-{
-  Assert(component < this->n_components,
-          ExcIndexRange(component, 0, this->n_components));
-  (void)p;
-  (void)component;
-  return 0;
-}
-
-
-template <int dim>
-void BoundaryValues<dim>::vector_value(const Point<dim> &p,
-                                        Vector<double>   &values) const
-{
-  for (unsigned int c = 0; c < this->n_components; ++c)
-    values(c) = BoundaryValues<dim>::value(p, c);
-}
-
+//--------------------------RHS and True Solution---------------------------
 
 template <int dim>
 class RightHandSide : public TensorFunction<1, dim>
@@ -149,11 +111,7 @@ public:
   RightHandSide()
     : TensorFunction<1, dim>()
   {}
-
   virtual Tensor<1, dim> value(const Point<dim> &p) const override;
-
-  virtual void value_list(const std::vector<Point<dim>> &p,
-                          std::vector<Tensor<1, dim>> &value) const override;
 };
 
 
@@ -170,24 +128,12 @@ Tensor<1, dim> RightHandSide<dim>::value(const Point<dim> &p) const
 
 
 template <int dim>
-void RightHandSide<dim>::value_list(const std::vector<Point<dim>> &vp,
-                                    std::vector<Tensor<1, dim>> &values) const
-{
-  for (unsigned int c = 0; c < vp.size(); ++c)
-    {
-      values[c] = RightHandSide<dim>::value(vp[c]);
-    }
-}
-
-
-template <int dim>
 class TrueSolution : public Function<dim>
 {
 public:
   TrueSolution()
     : Function<dim>()
   {}
-
   virtual double value(const Point<dim>  &p,
                         const unsigned int component = 0) const override;
 };
@@ -228,7 +174,7 @@ void StokesProblem<dim>::run()
   for(unsigned cycle = 0; cycle+2 <= level; cycle++)
   {
     std::cout << "Level: " << cycle+2 << "----------------------------------" << std::endl;
-    if(cycle) refine_grid();
+    if(cycle) triangulation.refine_global(1);
     std::cout << "Setup..." << std::endl;
     setup_system();
     timer.reset();
@@ -257,13 +203,6 @@ void StokesProblem<dim>::make_grid()
 
 
 template<int dim>
-void StokesProblem<dim>::refine_grid()
-{
-  triangulation.refine_global(1);
-}
-
-
-template<int dim>
 void StokesProblem<dim>::setup_system()
 {
   dof_handler.distribute_dofs(fe);
@@ -279,7 +218,7 @@ void StokesProblem<dim>::setup_system()
   DoFTools::make_hanging_node_constraints(dof_handler, constraints);
   VectorTools::interpolate_boundary_values(dof_handler,
                                            0,
-                                           BoundaryValues<dim>(),
+                                           Functions::ZeroFunction<dim>(),
                                            constraints,
                                            fe.component_mask(velocities));
   constraints.close();
