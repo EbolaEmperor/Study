@@ -3,8 +3,8 @@
 // See section 6.2 of Zhang [2016]
 // 
 // Velocity-pressure decomposition method: GePUP
-// Time discretization: IMEX-trapezoidal (2nd order)
-// Space discretization: Q2 element (2nd order in H1)
+// Time discretization: ERK-ESDIRK (4th order)
+// Space discretization: Q3 element (4th order in L2)
 //----------------------------------------------------------
 
 #include <omp.h>
@@ -70,7 +70,37 @@ using namespace dealii;
 #define OUTPUT_CG_ITERATIONS
 
 const int n_thr = 6;
-const double diffusion_coefficient = 1.7e-6;
+const double diffusion_coefficient = 3.4e-6;
+
+
+//--------------------------ERK-ESDIRK Butcher Table--------------------------
+
+namespace ERK_ESDIRK_Table{
+    const int stage = 6;
+    const double gma = 0.25;
+    const double b[6] = {
+        0.15791629516167136, 0, 0.18675894052400077, 0.6805652953093346, -0.27524053099500667, gma
+    };
+    const double aE[6][6] = {
+        {0, 0, 0, 0, 0, 0},
+        {2.0*gma, 0, 0, 0, 0, 0},
+        {0.221776, 0.110224, 0, 0, 0, 0},
+        {-0.04884659515311857, -0.17772065232640102, 0.8465672474795197, 0, 0, 0},
+        {-0.15541685842491548, -0.3567050098221991, 1.0587258798684427, 0.30339598837867193, 0, 0},
+        {0.2014243506726763, 0.008742057842904185, 0.15993995707168115, 0.4038290605220775, 0.22606457389066084, 0}
+    };
+    const double aI[6][6] = {
+        {0, 0, 0, 0, 0, 0},
+        {gma, gma, 0, 0, 0, 0},
+        {0.137776, -0.055776, gma, 0, 0, 0},
+        {0.14463686602698217, -0.22393190761334475, 0.4492950415863626, gma, 0, 0},
+        {0.09825878328356477, -0.5915442428196704, 0.8101210538282996, 0.283164405707806, gma, 0},
+        {b[0], b[1], b[2], b[3], b[4], b[5]}
+    };
+    const double c[6] = {
+        0, 0.5, 0.332, 0.62, 0.85, 1.0
+    };
+}
 
 //--------------------------Data Structures for MG--------------------------
 
@@ -245,9 +275,16 @@ private:
 
   void make_mesh();
   void setup_system();
-  void setup_convection(const Vector<double>& u1, const Vector<double>& u2);
-  void setup_grad_pressure();
-  void update_pressure(const Vector<double>& u1, const Vector<double>& u2);
+  void setup_convection(const Vector<double>& u1, 
+                        const Vector<double>& u2,
+                        Vector<double> &convection_u1,
+                        Vector<double> &convection_u2);
+  void setup_grad_pressure(const Vector<double>& pressure,
+                           Vector<double>& grad_pressure_u1,
+                           Vector<double>& grad_pressure_u2);
+  void update_pressure(const Vector<double>& u1, 
+                       const Vector<double>& u2,
+                       Vector<double>& pressure);
   void solve_time_step(Vector<double>& solution, const bool ispressure = false);
   void compute_vortricity();
   void output_result(const bool force_output = false);
@@ -284,17 +321,10 @@ private:
   MGConstrainedDoFs                   mg_constrained_dofs;
   MGTransferPrebuilt<Vector<double>>  mg_transfer;
 
-  Vector<double> convection_u1;
-  Vector<double> convection_u2;
-  Vector<double> grad_pressure_u1;
-  Vector<double> grad_pressure_u2;
-
-  Vector<double> pressure;
   Vector<double> vortricity;
   Vector<double> solution_u1;
   Vector<double> solution_u2;
-  Vector<double> prev_solution_u1;
-  Vector<double> prev_solution_u2;
+  Vector<double> pressure;
   Vector<double> system_rhs;
 
   int      level;
@@ -314,11 +344,11 @@ template <int dim>
 INSE<dim>::INSE
   (const int &N, const double &T, const int &region, const double &offset)
   : triangulation(Triangulation<dim>::limit_level_difference_at_vertices)
-  , fe(2)
+  , fe(3)
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
-  , time_step(5e-3 / (1<<level) * 256.)
+  , time_step(1e-2 / (1<<level) * 256.)
   , region(region)
   , offset(offset)
 {}
@@ -530,8 +560,6 @@ void INSE<dim>::setup_system()
   pressure.reinit(dof_handler.n_dofs());
   solution_u1.reinit(dof_handler.n_dofs());
   solution_u2.reinit(dof_handler.n_dofs());
-  prev_solution_u1.reinit(dof_handler.n_dofs());
-  prev_solution_u2.reinit(dof_handler.n_dofs());
   system_rhs.reinit(dof_handler.n_dofs());
 
   assemble_multigrid();
@@ -658,10 +686,12 @@ void INSE<dim>::assemble_multigrid()
 
 template <int dim>
 void INSE<dim>::setup_convection
-      (const Vector<double>& u1, const Vector<double>& u2)
+      (const Vector<double>& u1, const Vector<double>& u2,
+       Vector<double>& convection_u1,
+       Vector<double>& convection_u2)
 {
-  convection_u1.reinit(solution_u1.size());
-  convection_u2.reinit(solution_u1.size());
+  convection_u1 = 0.;
+  convection_u2 = 0.;
 
 #ifdef NO_CONVECTION
   return;
@@ -740,10 +770,13 @@ for(int th = 0; th < n_thr; th++)
 
 
 template <int dim>
-void INSE<dim>::setup_grad_pressure()
+void INSE<dim>::setup_grad_pressure(
+                           const Vector<double>& pressure,
+                           Vector<double>& grad_pressure_u1,
+                           Vector<double>& grad_pressure_u2)
 {
-  grad_pressure_u1.reinit(solution_u1.size());
-  grad_pressure_u2.reinit(solution_u1.size());
+  grad_pressure_u1 = 0.;
+  grad_pressure_u2 = 0.;
 
   const unsigned dofs_per_cell = fe.n_dofs_per_cell();
 
@@ -809,7 +842,8 @@ for(int th = 0; th < n_thr; th++)
 
 template <int dim>
 void INSE<dim>::update_pressure(
-  const Vector<double> &u1, const Vector<double>& u2)
+  const Vector<double> &u1, const Vector<double>& u2,
+  Vector<double>& pressure)
 {
   system_matrix_pressure.copy_from(laplace_matrix_pressure);
   system_rhs.reinit(solution_u1.size());
@@ -972,25 +1006,32 @@ void INSE<dim>::pre_projections(Vector<double>& u1,
                                 Vector<double>& u2, 
                                 const int &times)
 {
+  Vector<double> phi;
+  Vector<double> grad_phi_1;
+  Vector<double> grad_phi_2;
+  phi.reinit(u1.size());
+  grad_phi_1.reinit(u1.size());
+  grad_phi_2.reinit(u1.size());
+
   for(int T = 0; T < times; T++)
   {
     projection_poisson_setup(u1, u2);
     system_matrix_pressure.copy_from(laplace_matrix_pressure);
     constraints_pressure.condense(system_matrix_pressure, system_rhs);
-    solve_time_step(pressure, true);
-    constraints_pressure.distribute(pressure);
-    setup_grad_pressure();
+    solve_time_step(phi, true);
+    constraints_pressure.distribute(phi);
+    setup_grad_pressure(phi, grad_phi_1, grad_phi_2);
     
     system_matrix.copy_from(mass_matrix);
     mass_matrix.vmult(system_rhs, u1);
-    system_rhs.add(-1., grad_pressure_u1);
+    system_rhs.add(-1., grad_phi_1);
     constraints_u1.condense(system_matrix, system_rhs);
     solve_time_step(u1);
     constraints_u1.distribute(u1);
     
     system_matrix.copy_from(mass_matrix);
     mass_matrix.vmult(system_rhs, u2);
-    system_rhs.add(-1., grad_pressure_u2);
+    system_rhs.add(-1., grad_phi_2);
     constraints_u2.condense(system_matrix, system_rhs);
     solve_time_step(u2);
     constraints_u2.distribute(u2);
@@ -1003,20 +1044,21 @@ void INSE<dim>::run(){
   if(region==1) time_step *= 0.5;
   if(region==2) time_step *= 0.25;
   if(region==3) time_step *= 0.125;
+
+  using namespace ERK_ESDIRK_Table;
   
   Vector<double> tmp;
-  Vector<double> middle_solution_u1;
-  Vector<double> middle_solution_u2;
-  Vector<double> middle_solution_w1;
-  Vector<double> middle_solution_w2;
-  Vector<double> forcing_term_1;
-  Vector<double> forcing_term_2;
-  Vector<double> pressure_store;
-
-  Vector<double> grad_pressure_u1_stage1;
-  Vector<double> grad_pressure_u2_stage1;
-  Vector<double> convection_u1_stage1;
-  Vector<double> convection_u2_stage1;
+  std::vector<Vector<double>> middle_solution_u1(stage);
+  std::vector<Vector<double>> middle_solution_u2(stage);
+  std::vector<Vector<double>> middle_solution_w1(stage);
+  std::vector<Vector<double>> middle_solution_w2(stage);
+  std::vector<Vector<double>> middle_XE_1(stage);
+  std::vector<Vector<double>> middle_XE_2(stage);
+  std::vector<Vector<double>> middle_XI_1(stage);
+  std::vector<Vector<double>> middle_XI_2(stage);
+  std::vector<Vector<double>> middle_pressure(stage);
+  std::vector<Vector<double>> middle_grad_pressure_1(stage);
+  std::vector<Vector<double>> middle_grad_pressure_2(stage);
 
   make_mesh();
   setup_system();
@@ -1025,145 +1067,145 @@ void INSE<dim>::run(){
   timestep_number = 0;
 
   tmp.reinit(solution_u1.size());
-  middle_solution_u1.reinit(solution_u1.size());
-  middle_solution_u2.reinit(solution_u1.size());
-  middle_solution_w1.reinit(solution_u1.size());
-  middle_solution_w2.reinit(solution_u1.size());
-  forcing_term_1.reinit(solution_u1.size());
-  forcing_term_2.reinit(solution_u1.size());
-  pressure_store.reinit(pressure.size());
+  for(int i = 0; i < stage; i++){
+    middle_solution_u1[i].reinit(solution_u1.size());
+    middle_solution_u2[i].reinit(solution_u1.size());
+    middle_solution_w1[i].reinit(solution_u1.size());
+    middle_solution_w2[i].reinit(solution_u1.size());
+    middle_XE_1[i].reinit(solution_u1.size());
+    middle_XE_2[i].reinit(solution_u1.size());
+    middle_XI_1[i].reinit(solution_u1.size());
+    middle_XI_2[i].reinit(solution_u1.size());
+    middle_pressure[i].reinit(solution_u1.size());
+    middle_grad_pressure_1[i].reinit(solution_u1.size());
+    middle_grad_pressure_2[i].reinit(solution_u1.size());
+  }
 
   Initial1<dim> initial_1(region==4);
   Initial2<dim> initial_2(region==4);
   
   VectorTools::interpolate(dof_handler,
                            initial_1,
-                           prev_solution_u1);
+                           solution_u1);
   VectorTools::interpolate(dof_handler,
                            initial_2,
-                           prev_solution_u2);
+                           solution_u2);
   
-  pre_projections(prev_solution_u1, prev_solution_u2, 20);
-  solution_u1 = prev_solution_u1;
-  solution_u2 = prev_solution_u2;
+  std::cout << "Pre-projections" << std::endl;
+  pre_projections(solution_u1, solution_u2, 20);
+  std::cout << std::endl;
+
   CPUTimer timer;
   const double prod = pow(2., 1./30000);
 
-  while(time <= end_time){
-    // ------------------------------first stage-------------------------------------
-    setup_convection(prev_solution_u1, prev_solution_u2);
-    update_pressure(prev_solution_u1, prev_solution_u2);
-    output_result();
-    
-    if(timestep_number>=70000
-      && timestep_number<=100000) time_step *= prod;
-
-    time += time_step;
-    timestep_number++;
-    std::cout << "Time-step total time: " << timer() << "s." << std::endl;
+  while(time + time_step <= end_time + 1e-10){
+    std::cout << "time step " << timestep_number
+              << " at t=" << time << std::endl;
     timer.reset();
-    std::cout << std::endl << "Time step " << timestep_number << " at t=" << time << std::endl;
 
-    setup_grad_pressure();
+    //-----------------------------Runge-Kutta IMEX stages------------------------------------
+    std::cout << "stage 0" << std::endl;
+    setup_grad_pressure(pressure,
+                        middle_grad_pressure_1[0],
+                        middle_grad_pressure_2[0]);
+    setup_convection(solution_u1,
+                     solution_u2,
+                     middle_XE_1[0],
+                     middle_XE_2[0]);
+    middle_XE_1[0] -= middle_grad_pressure_1[0];
+    middle_XE_2[0] -= middle_grad_pressure_2[0];
+    laplace_matrix.vmult(middle_XI_1[0], solution_u1);
+    laplace_matrix.vmult(middle_XI_2[0], solution_u2);
 
-    // setup system_matrix
+    for(int s = 1; s < stage; s++){
+      std::cout << "stage " << s << std::endl;
+
+      // compute w1[s]
+      system_matrix.copy_from(mass_matrix);
+      system_matrix.add(time_step * gma, laplace_matrix);
+
+      mass_matrix.vmult(system_rhs, solution_u1);
+      for(int j = 0; j < s; j++){
+        system_rhs.add(time_step * aE[s][j], middle_XE_1[j]);
+        system_rhs.add(-time_step * aI[s][j], middle_XI_1[j]);
+      }
+      constraints_u1.condense(system_matrix, system_rhs);
+      solve_time_step(middle_solution_w1[s]);
+      constraints_u1.distribute(middle_solution_w1[s]);
+
+      // compute w2[s]
+      system_matrix.copy_from(mass_matrix);
+      system_matrix.add(time_step * gma, laplace_matrix);
+
+      mass_matrix.vmult(system_rhs, solution_u2);
+      for(int j = 0; j < s; j++){
+        system_rhs.add(time_step * aE[s][j], middle_XE_2[j]);
+        system_rhs.add(-time_step * aI[s][j], middle_XI_2[j]);
+      }
+      constraints_u2.condense(system_matrix, system_rhs);
+      solve_time_step(middle_solution_w2[s]);
+      constraints_u2.distribute(middle_solution_w2[s]);
+
+      // compute u[s] = Proj(w[s])
+      middle_solution_u1[s] = middle_solution_w1[s];
+      middle_solution_u2[s] = middle_solution_w2[s];
+      pre_projections(middle_solution_u1[s], middle_solution_u2[s]);
+
+      // compute q[s]
+      update_pressure(middle_solution_u1[s],
+                      middle_solution_u2[s],
+                      middle_pressure[s]);
+      setup_grad_pressure(middle_pressure[s],
+                          middle_grad_pressure_1[s],
+                          middle_grad_pressure_2[s]);
+
+      // compute (u[s] \cdot \nabla) u[s]
+      setup_convection(middle_solution_u1[s],
+                       middle_solution_u2[s],
+                       middle_XE_1[s],
+                       middle_XE_2[s]);
+
+      // compute XE(u[s], ts) = f - (u[s] \cdot \nabla) u[s] - \nabla q[s]
+      middle_XE_1[s] -= middle_grad_pressure_1[s];
+      middle_XE_2[s] -= middle_grad_pressure_2[s];
+
+      // compute XI(w[s], ts) = -nu * \Delta w
+      laplace_matrix.vmult(middle_XI_1[s], middle_solution_w1[s]);
+      laplace_matrix.vmult(middle_XI_2[s], middle_solution_w2[s]);
+    }
+
+    std::cout << "final stage" << std::endl;
+    // compute w*
+    mass_matrix.vmult(system_rhs, middle_solution_w1[stage-1]);
+    for(int j = 0; j < stage; j++)
+      system_rhs.add(time_step * (b[j] - aE[stage-1][j]), middle_XE_1[j]);
     system_matrix.copy_from(mass_matrix);
-    system_matrix.add(0.5*time_step, laplace_matrix);
-
-    // setup right side term
-    mass_matrix.vmult(system_rhs, prev_solution_u1);
-    laplace_matrix.vmult(tmp, prev_solution_u1);
-    system_rhs.add(-0.5*time_step, tmp);
-    system_rhs.add(-time_step, convection_u1);
-    system_rhs.add(-time_step, grad_pressure_u1);
-
-    constraints_u1.condense(system_matrix, system_rhs);
-    solve_time_step(middle_solution_w1);
-    constraints_u1.distribute(middle_solution_w1);
-
-    // setup system_matrix
-    system_matrix.copy_from(mass_matrix);
-    system_matrix.add(0.5*time_step, laplace_matrix);
-
-    // setup right side term
-    mass_matrix.vmult(system_rhs, prev_solution_u2);
-    laplace_matrix.vmult(tmp, prev_solution_u2);
-    system_rhs.add(-0.5*time_step, tmp);
-    system_rhs.add(-time_step, convection_u2);
-    system_rhs.add(-time_step, grad_pressure_u2);
-    
-    constraints_u2.condense(system_matrix, system_rhs);
-    solve_time_step(middle_solution_w2);
-    constraints_u2.distribute(middle_solution_w2);
-
-    // u = Proj(w)
-    pressure_store = pressure;
-    pressure = 0.;
-    middle_solution_u1 = middle_solution_w1;
-    middle_solution_u2 = middle_solution_w2;
-    pre_projections(middle_solution_u1, middle_solution_u2);
-    pressure = pressure_store;
-
-    //------------------------------second stage-------------------------------------
-
-    convection_u1_stage1 = convection_u1;
-    convection_u2_stage1 = convection_u2;
-    grad_pressure_u1_stage1 = grad_pressure_u1;
-    grad_pressure_u2_stage1 = grad_pressure_u2;
-
-    setup_convection(middle_solution_u1, middle_solution_u2);
-    update_pressure(middle_solution_u1, middle_solution_u2);
-    setup_grad_pressure();
-
-    // setup system_matrix
-    system_matrix.copy_from(mass_matrix);
-
-    // setup right side term
-    mass_matrix.vmult(system_rhs, prev_solution_u1);
-    laplace_matrix.vmult(tmp, prev_solution_u1);
-    system_rhs.add(-0.5*time_step, tmp);
-    laplace_matrix.vmult(tmp, middle_solution_w1);
-    system_rhs.add(-0.5*time_step, tmp);
-    system_rhs.add(-0.5*time_step, convection_u1);
-    system_rhs.add(-0.5*time_step, convection_u1_stage1);
-    system_rhs.add(-0.5*time_step, grad_pressure_u1);
-    system_rhs.add(-0.5*time_step, grad_pressure_u1_stage1);
-
     constraints_u1.condense(system_matrix, system_rhs);
     solve_time_step(solution_u1);
     constraints_u1.distribute(solution_u1);
 
-    // setup system_matrix
+    mass_matrix.vmult(system_rhs, middle_solution_w2[stage-1]);
+    for(int j = 0; j < stage; j++)
+      system_rhs.add(time_step * (b[j] - aE[stage-1][j]), middle_XE_2[j]);
     system_matrix.copy_from(mass_matrix);
-
-    // setup right side term
-    mass_matrix.vmult(system_rhs, prev_solution_u2);
-    laplace_matrix.vmult(tmp, middle_solution_u2);
-    system_rhs.add(-0.5*time_step, tmp);
-    laplace_matrix.vmult(tmp, prev_solution_u2);
-    system_rhs.add(-0.5*time_step, tmp);
-    system_rhs.add(-0.5*time_step, convection_u2);
-    system_rhs.add(-0.5*time_step, convection_u2_stage1);
-    system_rhs.add(-0.5*time_step, grad_pressure_u2);
-    system_rhs.add(-0.5*time_step, grad_pressure_u2_stage1);
-
     constraints_u2.condense(system_matrix, system_rhs);
     solve_time_step(solution_u2);
     constraints_u2.distribute(solution_u2);
 
-    // u = Proj(w)
-    pressure_store = pressure;
-    pressure = 0.;
+    // compute u^{n+1}
     pre_projections(solution_u1, solution_u2);
-    pressure = pressure_store;
 
-    prev_solution_u1 = solution_u1;
-    prev_solution_u2 = solution_u2;
+    // compute p^{n+1}
+    update_pressure(solution_u1, solution_u2, pressure);
+    
+    output_result();
+    time += time_step;
+    timestep_number ++;
+    if(timestep_number >= 70000 && timestep_number <= 100000)
+      time_step *= prod;
+
+    std::cout << "time step total: " << timer() << "s.\n" << std::endl;
   }
-
-  setup_convection(prev_solution_u1, prev_solution_u2);
-  update_pressure(prev_solution_u1, prev_solution_u2);
-  std::cout << std::endl;
   output_result(true);
 }
 
