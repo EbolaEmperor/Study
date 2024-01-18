@@ -1112,6 +1112,8 @@ void INSE<dim>::run(){
                      solution_u2,
                      middle_XE_1[0],
                      middle_XE_2[0]);
+    middle_XE_1[0] *= -1;
+    middle_XE_2[0] *= -1;
     middle_XE_1[0] -= middle_grad_pressure_1[0];
     middle_XE_2[0] -= middle_grad_pressure_2[0];
     laplace_matrix.vmult(middle_XI_1[0], solution_u1);
@@ -1166,6 +1168,8 @@ void INSE<dim>::run(){
                        middle_XE_2[s]);
 
       // compute XE(u[s], ts) = f - (u[s] \cdot \nabla) u[s] - \nabla q[s]
+      middle_XE_1[s] *= -1;
+      middle_XE_2[s] *= -1;
       middle_XE_1[s] -= middle_grad_pressure_1[s];
       middle_XE_2[s] -= middle_grad_pressure_2[s];
 
