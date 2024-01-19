@@ -3,9 +3,16 @@
 // See section 6.2 of Zhang [2016]
 // 
 // Velocity-pressure decomposition method: GePUP
+// [default]
 // Time discretization: ERK-ESDIRK (4th order)
 // Space discretization: Q3 element (4th order in L2)
+//
+// [2nd order] (with #define SECOND_ORDER)
+// Time discretization: IMEX-Trapezoidal (2nd order)
+// Space discretization: Q2 element (3rd order in L2)
 //----------------------------------------------------------
+
+// #define SECOND_ORDER
 
 #include <omp.h>
 #include <deal.II/base/utilities.h>
@@ -99,6 +106,28 @@ namespace ERK_ESDIRK_Table{
     };
     const double c[6] = {
         0, 0.5, 0.332, 0.62, 0.85, 1.0
+    };
+}
+
+
+//-----------------------IMEX-Trapezoidal Butcher Table-----------------------
+
+namespace IMEX_Trapezoidal_Table{
+    const int stage = 2;
+    const double gma = 0.5;
+    const double b[2] = {
+        0.5, 0.5
+    };
+    const double aE[2][2] = {
+        {0, 0}, 
+        {1, 0}
+    };
+    const double aI[2][2] = {
+        {0, 0},
+        {0.5, 0.5}
+    };
+    const double c[2] = {
+        0, 1
     };
 }
 
@@ -344,7 +373,11 @@ template <int dim>
 INSE<dim>::INSE
   (const int &N, const double &T, const int &region, const double &offset)
   : triangulation(Triangulation<dim>::limit_level_difference_at_vertices)
+#ifdef SECOND_ORDER
+  , fe(2)
+#else
   , fe(3)
+#endif
   , dof_handler(triangulation)
   , level(N)
   , end_time(T)
@@ -437,7 +470,12 @@ void INSE<dim>::output_result(const bool force_output)
   compute_vortricity();
   data_out.add_data_vector(vortricity, "vortricity");
 
+#ifdef SECOND_ORDER
   data_out.build_patches(2);
+#else
+  data_out.build_patches(4);
+#endif
+
   std::ofstream output("solution/solution-" + std::to_string(timestep_number) + ".vtu");
   data_out.write_vtu(output);
 }
@@ -1045,8 +1083,12 @@ void INSE<dim>::run(){
   if(region==2) time_step *= 0.25;
   if(region==3) time_step *= 0.125;
 
+#ifdef SECOND_ORDER
+  using namespace IMEX_Trapezoidal_Table;
+#else
   using namespace ERK_ESDIRK_Table;
-  
+#endif
+
   Vector<double> tmp;
   std::vector<Vector<double>> middle_solution_u1(stage);
   std::vector<Vector<double>> middle_solution_u2(stage);
