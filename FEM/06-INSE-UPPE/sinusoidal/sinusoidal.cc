@@ -302,6 +302,7 @@ private:
   MGLevelObject<SparseMatrix<double>> mg_matrices;
   MGLevelObject<SparseMatrix<double>> mg_interface_matrices;
   MGConstrainedDoFs                   mg_constrained_dofs;
+  MGTransferPrebuilt<Vector<double>>  mg_transfer;
 
   Vector<double> convection_u1;
   Vector<double> convection_u2;
@@ -391,7 +392,7 @@ void INSE<dim>::compute_vortricity()
 template <int dim>
 void INSE<dim>::output_result(const bool force_output)
 {
-  if(!force_output && (timestep_number % 50)) return;
+  if(!force_output && (timestep_number % 25)) return;
   DataOut<dim> data_out;
   data_out.attach_dof_handler(dof_handler);
   data_out.add_data_vector(solution_u1, "solution_u1");
@@ -469,9 +470,6 @@ void INSE<dim>::solve_time_step(Vector<double>& solution, const bool ispressure)
     preconditioner.initialize(system_matrix, 1.0);
     solver.solve(system_matrix, solution, system_rhs, preconditioner);
   } else {
-    MGTransferPrebuilt<Vector<double>> mg_transfer(mg_constrained_dofs);
-    mg_transfer.build(dof_handler);
-
     SolverControl coarse_solver_control(5000, 1e-12, false, false);
     SolverCG<Vector<double>> coarse_solver(coarse_solver_control);
     PreconditionIdentity id;
@@ -696,6 +694,9 @@ void INSE<dim>::assemble_multigrid()
                         scratch_data,
                         CopyData(),
                         MeshWorker::assemble_own_cells);
+  
+  mg_transfer.initialize_constraints(mg_constrained_dofs);
+  mg_transfer.build(dof_handler);
 }
 
 
